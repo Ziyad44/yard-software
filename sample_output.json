@@ -1,0 +1,976 @@
+{
+  "snapshot": {
+    "timestamp": "2026-04-14T15:15:25.788262",
+    "queue_length": 3,
+    "waiting_trucks": [
+      {
+        "truck_id": "T101",
+        "truck_class": "large",
+        "load_type": "floor",
+        "load_units": 16,
+        "gate_arrival_ts": "2026-04-14T14:49:25.788262"
+      },
+      {
+        "truck_id": "T102",
+        "truck_class": "medium",
+        "load_type": "palletized",
+        "load_units": 12,
+        "gate_arrival_ts": "2026-04-14T14:57:25.788262"
+      },
+      {
+        "truck_id": "T103",
+        "truck_class": "small",
+        "load_type": "floor",
+        "load_units": 8,
+        "gate_arrival_ts": "2026-04-14T15:04:25.788262"
+      }
+    ],
+    "unloading_trucks": [
+      {
+        "truck_id": "T090",
+        "truck_class": "medium",
+        "load_type": "floor",
+        "load_units": 12,
+        "gate_arrival_ts": "2026-04-14T14:33:25.788262",
+        "service_start_ts": "2026-04-14T15:01:25.788262",
+        "current_dock_id": 1
+      },
+      {
+        "truck_id": "T091",
+        "truck_class": "large",
+        "load_type": "palletized",
+        "load_units": 16,
+        "gate_arrival_ts": "2026-04-14T14:41:25.788262",
+        "service_start_ts": "2026-04-14T15:06:25.788262",
+        "current_dock_id": 2
+      }
+    ],
+    "docks": [
+      {
+        "dock_id": 1,
+        "status": "busy",
+        "truck_id": "T090",
+        "truck_class": "medium",
+        "load_type": "floor",
+        "eta_minutes": 34.75
+      },
+      {
+        "dock_id": 2,
+        "status": "busy",
+        "truck_id": "T091",
+        "truck_class": "large",
+        "load_type": "palletized",
+        "eta_minutes": 33.375
+      },
+      {
+        "dock_id": 3,
+        "status": "idle",
+        "truck_id": null,
+        "truck_class": null,
+        "load_type": null,
+        "eta_minutes": 0.0
+      },
+      {
+        "dock_id": 4,
+        "status": "idle",
+        "truck_id": null,
+        "truck_class": null,
+        "load_type": null,
+        "eta_minutes": 0.0
+      }
+    ],
+    "staging": [
+      {
+        "zone_id": "S1",
+        "occupancy_units": 24,
+        "capacity_units": 30,
+        "occupancy_percent": 80.0
+      },
+      {
+        "zone_id": "S2",
+        "occupancy_units": 20,
+        "capacity_units": 30,
+        "occupancy_percent": 66.7
+      },
+      {
+        "zone_id": "S3",
+        "occupancy_units": 16,
+        "capacity_units": 20,
+        "occupancy_percent": 80.0
+      },
+      {
+        "zone_id": "S4",
+        "occupancy_units": 12,
+        "capacity_units": 20,
+        "occupancy_percent": 60.0
+      }
+    ],
+    "staging_occupancy_units": 72,
+    "staging_capacity_units": 100,
+    "staging_ratio": 0.72,
+    "arrival_rate_per_hour": 16.0,
+    "service_stats": {
+      "small_floor": {
+        "mean": 31.875,
+        "std": 1.899835519196333,
+        "n": 8,
+        "reference_workers": 2
+      },
+      "medium_floor": {
+        "mean": 48.75,
+        "std": 1.984313483298443,
+        "n": 8,
+        "reference_workers": 3
+      },
+      "large_floor": {
+        "mean": 71.625,
+        "std": 2.496873044429772,
+        "n": 8,
+        "reference_workers": 4
+      },
+      "small_palletized": {
+        "mean": 20.0,
+        "std": 1.224744871391589,
+        "n": 8,
+        "reference_workers": 0
+      },
+      "medium_palletized": {
+        "mean": 30.0,
+        "std": 1.224744871391589,
+        "n": 8,
+        "reference_workers": 0
+      },
+      "large_palletized": {
+        "mean": 42.375,
+        "std": 1.5761900266148114,
+        "n": 8,
+        "reference_workers": 0
+      }
+    },
+    "resources": {
+      "workers": 8,
+      "forklifts": 2,
+      "active_docks": 4,
+      "max_unloaders_per_dock": 4
+    },
+    "alerts": [
+      "High dock utilization risk"
+    ]
+  },
+  "forecast": {
+    "baseline_rate_per_hour": 16.0,
+    "smoothed_rate_per_hour": 16.0,
+    "expected_arrivals": 16.0,
+    "scenarios": {
+      "low": 12.8,
+      "baseline": 16.0,
+      "high": 19.2
+    }
+  },
+  "best_recommendation": {
+    "timestamp": "2026-04-14T15:15:25.788262",
+    "action_name": "clear_staging",
+    "action_payload": {
+      "name": "clear_staging",
+      "workers_by_dock": {
+        "1": 1,
+        "2": 0,
+        "3": 1,
+        "4": 0
+      },
+      "forklifts_by_dock": {
+        "1": 0,
+        "2": 1,
+        "3": 0,
+        "4": 1
+      },
+      "gate_release_factor": 0.9,
+      "staging_clearance_boost": 1.3,
+      "notes": "Conservative unloading to reduce staging pressure and clear staging faster."
+    },
+    "expected_wait_minutes": 23.666666666666668,
+    "expected_queue_length": 6.876873855758923,
+    "expected_time_in_system_minutes": 64.14335533184888,
+    "expected_utilization": 1.0,
+    "staging_risk": 0.0,
+    "score": 66.26165108206669,
+    "rationale": "Conservative unloading to reduce staging pressure and clear staging faster. No severe trigger was active, so the lowest-delay feasible action was selected."
+  },
+  "verification": {
+    "spec_3_littles_law": {
+      "lhs_avg_number_in_system": 3.9032961037663636,
+      "rhs_lambda_times_W": 3.7996603053308595,
+      "lambda_per_hour_used": 3.046875,
+      "relative_error": 0.027275016740339865,
+      "target_max_error": 0.1,
+      "pass": true
+    },
+    "spec_4_ci_halfwidth": {
+      "n_replications": 16,
+      "mean": 72.893041610566,
+      "half_width": 7.073345725629189,
+      "ratio": 0.09703732440496615,
+      "target_max_ratio": 0.2,
+      "pass": true
+    },
+    "dashboard_cards": [
+      {
+        "title": "Spec 3 - Little's Law",
+        "status": "PASS",
+        "value": 2.73,
+        "unit": "% error",
+        "target": "<= 10%"
+      },
+      {
+        "title": "Spec 4 - CI Half-Width Ratio",
+        "status": "PASS",
+        "value": 9.7,
+        "unit": "% of mean",
+        "target": "<= 20%"
+      }
+    ],
+    "steady_state_reference": {
+      "avg_wait_minutes": 15.54350612737469,
+      "avg_time_in_system_minutes": 74.82407985882308,
+      "avg_queue_length": 0.8755580970058878,
+      "avg_number_in_system": 3.9032961037663636,
+      "dock_utilization": 0.7398994616803012,
+      "staging_overflow_risk": 0.0,
+      "throughput": 24,
+      "effective_flow_rate_per_hour": 3.046875,
+      "score": 74.82407985882308,
+      "replication_mean_tis": [
+        67.61232686957733,
+        68.97082944194607,
+        66.45437198911651,
+        61.93179554053438,
+        62.80507043910819,
+        103.02055488524985,
+        59.53181883525085,
+        68.37561981306774,
+        62.105372670407284,
+        100.3109448708581,
+        80.28028372796507,
+        82.3192900867251,
+        76.82852343060036,
+        59.021838184589946,
+        75.59269872191123,
+        71.12732626214789
+      ]
+    }
+  },
+  "evaluations": [
+    {
+      "action": {
+        "name": "clear_staging",
+        "workers_by_dock": {
+          "1": 1,
+          "2": 0,
+          "3": 1,
+          "4": 0
+        },
+        "forklifts_by_dock": {
+          "1": 0,
+          "2": 1,
+          "3": 0,
+          "4": 1
+        },
+        "gate_release_factor": 0.9,
+        "staging_clearance_boost": 1.3,
+        "notes": "Conservative unloading to reduce staging pressure and clear staging faster."
+      },
+      "baseline": {
+        "avg_wait_minutes": 23.666666666666668,
+        "avg_time_in_system_minutes": 64.14335533184888,
+        "avg_queue_length": 6.876873855758923,
+        "avg_number_in_system": 10.70854052242559,
+        "dock_utilization": 1.0,
+        "staging_overflow_risk": 0.0,
+        "throughput": 3,
+        "effective_flow_rate_per_hour": 3.0,
+        "score": 64.34335533184888,
+        "replication_mean_tis": [
+          64.30417944347458,
+          63.36581855263338,
+          63.66972433059269,
+          63.69485416260326,
+          64.06760294783642,
+          64.46069904002029,
+          65.04728482330921,
+          64.56474395468996,
+          63.58127305118715,
+          64.67737301214197
+        ]
+      },
+      "scenarios": {
+        "low": {
+          "avg_wait_minutes": 23.666666666666668,
+          "avg_time_in_system_minutes": 63.824386737268775,
+          "avg_queue_length": 5.578163340389748,
+          "avg_number_in_system": 9.367746673723081,
+          "dock_utilization": 1.0,
+          "staging_overflow_risk": 0.0,
+          "throughput": 3,
+          "effective_flow_rate_per_hour": 3.0,
+          "score": 64.02438673726877,
+          "replication_mean_tis": [
+            63.87103304722037,
+            63.22177176422545,
+            64.14362677468684,
+            63.9431141997203,
+            63.9853592846605,
+            63.82053759840439,
+            63.76319501834305,
+            64.33606687038235,
+            63.718230546493224,
+            63.44093226855126
+          ]
+        },
+        "baseline": {
+          "avg_wait_minutes": 23.666666666666668,
+          "avg_time_in_system_minutes": 64.14335533184888,
+          "avg_queue_length": 6.876873855758923,
+          "avg_number_in_system": 10.70854052242559,
+          "dock_utilization": 1.0,
+          "staging_overflow_risk": 0.0,
+          "throughput": 3,
+          "effective_flow_rate_per_hour": 3.0,
+          "score": 64.34335533184888,
+          "replication_mean_tis": [
+            64.30417944347458,
+            63.36581855263338,
+            63.66972433059269,
+            63.69485416260326,
+            64.06760294783642,
+            64.46069904002029,
+            65.04728482330921,
+            64.56474395468996,
+            63.58127305118715,
+            64.67737301214197
+          ]
+        },
+        "high": {
+          "avg_wait_minutes": 23.666666666666668,
+          "avg_time_in_system_minutes": 64.06165108206669,
+          "avg_queue_length": 8.39938237080657,
+          "avg_number_in_system": 12.357299037473238,
+          "dock_utilization": 1.0,
+          "staging_overflow_risk": 0.2,
+          "throughput": 3,
+          "effective_flow_rate_per_hour": 3.0,
+          "score": 66.26165108206669,
+          "replication_mean_tis": [
+            64.13122259703778,
+            63.70785227472851,
+            63.86483005195387,
+            64.22406262660962,
+            64.17466445760247,
+            64.05075418406386,
+            64.14509726245993,
+            64.42330113245312,
+            64.14013181851605,
+            63.754594415241606
+          ]
+        }
+      },
+      "verification": {
+        "spec_3_littles_law": {
+          "lhs_avg_number_in_system": 3.9032961037663636,
+          "rhs_lambda_times_W": 3.7996603053308595,
+          "lambda_per_hour_used": 3.046875,
+          "relative_error": 0.027275016740339865,
+          "target_max_error": 0.1,
+          "pass": true
+        },
+        "spec_4_ci_halfwidth": {
+          "n_replications": 16,
+          "mean": 72.893041610566,
+          "half_width": 7.073345725629189,
+          "ratio": 0.09703732440496615,
+          "target_max_ratio": 0.2,
+          "pass": true
+        },
+        "dashboard_cards": [
+          {
+            "title": "Spec 3 - Little's Law",
+            "status": "PASS",
+            "value": 2.73,
+            "unit": "% error",
+            "target": "<= 10%"
+          },
+          {
+            "title": "Spec 4 - CI Half-Width Ratio",
+            "status": "PASS",
+            "value": 9.7,
+            "unit": "% of mean",
+            "target": "<= 20%"
+          }
+        ],
+        "steady_state_reference": {
+          "avg_wait_minutes": 15.54350612737469,
+          "avg_time_in_system_minutes": 74.82407985882308,
+          "avg_queue_length": 0.8755580970058878,
+          "avg_number_in_system": 3.9032961037663636,
+          "dock_utilization": 0.7398994616803012,
+          "staging_overflow_risk": 0.0,
+          "throughput": 24,
+          "effective_flow_rate_per_hour": 3.046875,
+          "score": 74.82407985882308,
+          "replication_mean_tis": [
+            67.61232686957733,
+            68.97082944194607,
+            66.45437198911651,
+            61.93179554053438,
+            62.80507043910819,
+            103.02055488524985,
+            59.53181883525085,
+            68.37561981306774,
+            62.105372670407284,
+            100.3109448708581,
+            80.28028372796507,
+            82.3192900867251,
+            76.82852343060036,
+            59.021838184589946,
+            75.59269872191123,
+            71.12732626214789
+          ]
+        }
+      },
+      "robust_score": 66.26165108206669
+    },
+    {
+      "action": {
+        "name": "throttle_gate",
+        "workers_by_dock": {
+          "1": 1,
+          "2": 0,
+          "3": 1,
+          "4": 0
+        },
+        "forklifts_by_dock": {
+          "1": 0,
+          "2": 1,
+          "3": 0,
+          "4": 1
+        },
+        "gate_release_factor": 0.8,
+        "staging_clearance_boost": 1.15,
+        "notes": "Throttle gate release because staging or queue risk is high."
+      },
+      "baseline": {
+        "avg_wait_minutes": 23.873053633799277,
+        "avg_time_in_system_minutes": 63.59578323718896,
+        "avg_queue_length": 6.188069097758839,
+        "avg_number_in_system": 10.019735764425505,
+        "dock_utilization": 1.0,
+        "staging_overflow_risk": 0.4,
+        "throughput": 3,
+        "effective_flow_rate_per_hour": 3.1,
+        "score": 67.79578323718896,
+        "replication_mean_tis": [
+          64.50432409706885,
+          64.19883198831288,
+          64.3765519689442,
+          63.843436716305064,
+          60.899918181767404,
+          63.80045990142751,
+          63.7062641575786,
+          64.67351615575244,
+          63.76449484336109,
+          63.08865604651203
+        ]
+      },
+      "scenarios": {
+        "low": {
+          "avg_wait_minutes": 23.666666666666668,
+          "avg_time_in_system_minutes": 64.11018227719566,
+          "avg_queue_length": 4.557587144831196,
+          "avg_number_in_system": 8.431337144831193,
+          "dock_utilization": 1.0,
+          "staging_overflow_risk": 0.5,
+          "throughput": 3,
+          "effective_flow_rate_per_hour": 3.0,
+          "score": 69.31018227719566,
+          "replication_mean_tis": [
+            64.21309338049836,
+            64.06476703014947,
+            64.10878138852348,
+            63.70482635957637,
+            64.52366095302635,
+            64.32263883397013,
+            64.00146047616421,
+            63.90748961583663,
+            63.861910616206636,
+            64.39319411800504
+          ]
+        },
+        "baseline": {
+          "avg_wait_minutes": 23.873053633799277,
+          "avg_time_in_system_minutes": 63.59578323718896,
+          "avg_queue_length": 6.188069097758839,
+          "avg_number_in_system": 10.019735764425505,
+          "dock_utilization": 1.0,
+          "staging_overflow_risk": 0.4,
+          "throughput": 3,
+          "effective_flow_rate_per_hour": 3.1,
+          "score": 67.79578323718896,
+          "replication_mean_tis": [
+            64.50432409706885,
+            64.19883198831288,
+            64.3765519689442,
+            63.843436716305064,
+            60.899918181767404,
+            63.80045990142751,
+            63.7062641575786,
+            64.67351615575244,
+            63.76449484336109,
+            63.08865604651203
+          ]
+        },
+        "high": {
+          "avg_wait_minutes": 23.666666666666668,
+          "avg_time_in_system_minutes": 64.04545945889097,
+          "avg_queue_length": 7.374177055627166,
+          "avg_number_in_system": 11.205843722293835,
+          "dock_utilization": 1.0,
+          "staging_overflow_risk": 0.2,
+          "throughput": 3,
+          "effective_flow_rate_per_hour": 3.0,
+          "score": 66.24545945889098,
+          "replication_mean_tis": [
+            64.25958310581633,
+            64.04671413404337,
+            64.28553473081509,
+            63.313117361343096,
+            64.38746843766607,
+            63.402770804898864,
+            64.3964038921265,
+            64.38443673249729,
+            64.16688044739995,
+            63.811684942303295
+          ]
+        }
+      },
+      "verification": {
+        "spec_3_littles_law": {
+          "lhs_avg_number_in_system": 3.9032961037663636,
+          "rhs_lambda_times_W": 3.7996603053308595,
+          "lambda_per_hour_used": 3.046875,
+          "relative_error": 0.027275016740339865,
+          "target_max_error": 0.1,
+          "pass": true
+        },
+        "spec_4_ci_halfwidth": {
+          "n_replications": 16,
+          "mean": 72.893041610566,
+          "half_width": 7.073345725629189,
+          "ratio": 0.09703732440496615,
+          "target_max_ratio": 0.2,
+          "pass": true
+        },
+        "dashboard_cards": [
+          {
+            "title": "Spec 3 - Little's Law",
+            "status": "PASS",
+            "value": 2.73,
+            "unit": "% error",
+            "target": "<= 10%"
+          },
+          {
+            "title": "Spec 4 - CI Half-Width Ratio",
+            "status": "PASS",
+            "value": 9.7,
+            "unit": "% of mean",
+            "target": "<= 20%"
+          }
+        ],
+        "steady_state_reference": {
+          "avg_wait_minutes": 15.54350612737469,
+          "avg_time_in_system_minutes": 74.82407985882308,
+          "avg_queue_length": 0.8755580970058878,
+          "avg_number_in_system": 3.9032961037663636,
+          "dock_utilization": 0.7398994616803012,
+          "staging_overflow_risk": 0.0,
+          "throughput": 24,
+          "effective_flow_rate_per_hour": 3.046875,
+          "score": 74.82407985882308,
+          "replication_mean_tis": [
+            67.61232686957733,
+            68.97082944194607,
+            66.45437198911651,
+            61.93179554053438,
+            62.80507043910819,
+            103.02055488524985,
+            59.53181883525085,
+            68.37561981306774,
+            62.105372670407284,
+            100.3109448708581,
+            80.28028372796507,
+            82.3192900867251,
+            76.82852343060036,
+            59.021838184589946,
+            75.59269872191123,
+            71.12732626214789
+          ]
+        }
+      },
+      "robust_score": 69.31018227719566
+    },
+    {
+      "action": {
+        "name": "balanced",
+        "workers_by_dock": {
+          "1": 3,
+          "2": 0,
+          "3": 4,
+          "4": 0
+        },
+        "forklifts_by_dock": {
+          "1": 0,
+          "2": 1,
+          "3": 0,
+          "4": 1
+        },
+        "gate_release_factor": 1.0,
+        "staging_clearance_boost": 1.0,
+        "notes": "Balanced feasible allocation. Floor-loaded trucks use workers; palletized trucks use one forklift."
+      },
+      "baseline": {
+        "avg_wait_minutes": 23.666666666666668,
+        "avg_time_in_system_minutes": 64.24466031937433,
+        "avg_queue_length": 7.7840817303767835,
+        "avg_number_in_system": 11.61574839704345,
+        "dock_utilization": 0.9986563262535727,
+        "staging_overflow_risk": 0.6,
+        "throughput": 3,
+        "effective_flow_rate_per_hour": 3.0,
+        "score": 70.43928562438862,
+        "replication_mean_tis": [
+          64.25958310581633,
+          64.21728940739337,
+          64.28553473081509,
+          63.90217274841624,
+          64.31399142649532,
+          64.38701486250407,
+          64.23361846411366,
+          64.38443673249729,
+          64.16688044739995,
+          64.29608126829193
+        ]
+      },
+      "scenarios": {
+        "low": {
+          "avg_wait_minutes": 23.873053633799277,
+          "avg_time_in_system_minutes": 63.59578323718896,
+          "avg_queue_length": 6.188069097758839,
+          "avg_number_in_system": 10.019735764425505,
+          "dock_utilization": 0.9973360825277977,
+          "staging_overflow_risk": 0.6,
+          "throughput": 3,
+          "effective_flow_rate_per_hour": 3.1,
+          "score": 69.78512756730015,
+          "replication_mean_tis": [
+            64.50432409706885,
+            64.19883198831288,
+            64.3765519689442,
+            63.843436716305064,
+            60.899918181767404,
+            63.80045990142751,
+            63.7062641575786,
+            64.67351615575244,
+            63.76449484336109,
+            63.08865604651203
+          ]
+        },
+        "baseline": {
+          "avg_wait_minutes": 23.666666666666668,
+          "avg_time_in_system_minutes": 64.24466031937433,
+          "avg_queue_length": 7.7840817303767835,
+          "avg_number_in_system": 11.61574839704345,
+          "dock_utilization": 0.9986563262535727,
+          "staging_overflow_risk": 0.6,
+          "throughput": 3,
+          "effective_flow_rate_per_hour": 3.0,
+          "score": 70.43928562438862,
+          "replication_mean_tis": [
+            64.25958310581633,
+            64.21728940739337,
+            64.28553473081509,
+            63.90217274841624,
+            64.31399142649532,
+            64.38701486250407,
+            64.23361846411366,
+            64.38443673249729,
+            64.16688044739995,
+            64.29608126829193
+          ]
+        },
+        "high": {
+          "avg_wait_minutes": 23.666666666666668,
+          "avg_time_in_system_minutes": 64.36764000301488,
+          "avg_queue_length": 9.422632386584088,
+          "avg_number_in_system": 13.254299053250753,
+          "dock_utilization": 0.9995124660221542,
+          "staging_overflow_risk": 0.6,
+          "throughput": 3,
+          "effective_flow_rate_per_hour": 3.0,
+          "score": 70.5656898671035,
+          "replication_mean_tis": [
+            64.12770242137613,
+            64.61942112025184,
+            64.00979047537598,
+            64.25253644918716,
+            63.83987799504763,
+            64.8061388764069,
+            65.07923428151906,
+            63.79670016509781,
+            64.87731873820236,
+            64.26767950768406
+          ]
+        }
+      },
+      "verification": {
+        "spec_3_littles_law": {
+          "lhs_avg_number_in_system": 3.9032961037663636,
+          "rhs_lambda_times_W": 3.7996603053308595,
+          "lambda_per_hour_used": 3.046875,
+          "relative_error": 0.027275016740339865,
+          "target_max_error": 0.1,
+          "pass": true
+        },
+        "spec_4_ci_halfwidth": {
+          "n_replications": 16,
+          "mean": 72.893041610566,
+          "half_width": 7.073345725629189,
+          "ratio": 0.09703732440496615,
+          "target_max_ratio": 0.2,
+          "pass": true
+        },
+        "dashboard_cards": [
+          {
+            "title": "Spec 3 - Little's Law",
+            "status": "PASS",
+            "value": 2.73,
+            "unit": "% error",
+            "target": "<= 10%"
+          },
+          {
+            "title": "Spec 4 - CI Half-Width Ratio",
+            "status": "PASS",
+            "value": 9.7,
+            "unit": "% of mean",
+            "target": "<= 20%"
+          }
+        ],
+        "steady_state_reference": {
+          "avg_wait_minutes": 15.54350612737469,
+          "avg_time_in_system_minutes": 74.82407985882308,
+          "avg_queue_length": 0.8755580970058878,
+          "avg_number_in_system": 3.9032961037663636,
+          "dock_utilization": 0.7398994616803012,
+          "staging_overflow_risk": 0.0,
+          "throughput": 24,
+          "effective_flow_rate_per_hour": 3.046875,
+          "score": 74.82407985882308,
+          "replication_mean_tis": [
+            67.61232686957733,
+            68.97082944194607,
+            66.45437198911651,
+            61.93179554053438,
+            62.80507043910819,
+            103.02055488524985,
+            59.53181883525085,
+            68.37561981306774,
+            62.105372670407284,
+            100.3109448708581,
+            80.28028372796507,
+            82.3192900867251,
+            76.82852343060036,
+            59.021838184589946,
+            75.59269872191123,
+            71.12732626214789
+          ]
+        }
+      },
+      "robust_score": 70.5656898671035
+    },
+    {
+      "action": {
+        "name": "prioritize_large",
+        "workers_by_dock": {
+          "1": 3,
+          "2": 0,
+          "3": 4,
+          "4": 0
+        },
+        "forklifts_by_dock": {
+          "1": 0,
+          "2": 1,
+          "3": 0,
+          "4": 1
+        },
+        "gate_release_factor": 1.0,
+        "staging_clearance_boost": 1.0,
+        "notes": "Pre-position labor toward large floor-loaded trucks and keep forklift service for palletized trucks."
+      },
+      "baseline": {
+        "avg_wait_minutes": 23.666666666666668,
+        "avg_time_in_system_minutes": 64.24466031937433,
+        "avg_queue_length": 7.7840817303767835,
+        "avg_number_in_system": 11.61574839704345,
+        "dock_utilization": 0.9986563262535727,
+        "staging_overflow_risk": 0.6,
+        "throughput": 3,
+        "effective_flow_rate_per_hour": 3.0,
+        "score": 70.43928562438862,
+        "replication_mean_tis": [
+          64.25958310581633,
+          64.21728940739337,
+          64.28553473081509,
+          63.90217274841624,
+          64.31399142649532,
+          64.38701486250407,
+          64.23361846411366,
+          64.38443673249729,
+          64.16688044739995,
+          64.29608126829193
+        ]
+      },
+      "scenarios": {
+        "low": {
+          "avg_wait_minutes": 23.873053633799277,
+          "avg_time_in_system_minutes": 63.59578323718896,
+          "avg_queue_length": 6.188069097758839,
+          "avg_number_in_system": 10.019735764425505,
+          "dock_utilization": 0.9973360825277977,
+          "staging_overflow_risk": 0.6,
+          "throughput": 3,
+          "effective_flow_rate_per_hour": 3.1,
+          "score": 69.78512756730015,
+          "replication_mean_tis": [
+            64.50432409706885,
+            64.19883198831288,
+            64.3765519689442,
+            63.843436716305064,
+            60.899918181767404,
+            63.80045990142751,
+            63.7062641575786,
+            64.67351615575244,
+            63.76449484336109,
+            63.08865604651203
+          ]
+        },
+        "baseline": {
+          "avg_wait_minutes": 23.666666666666668,
+          "avg_time_in_system_minutes": 64.24466031937433,
+          "avg_queue_length": 7.7840817303767835,
+          "avg_number_in_system": 11.61574839704345,
+          "dock_utilization": 0.9986563262535727,
+          "staging_overflow_risk": 0.6,
+          "throughput": 3,
+          "effective_flow_rate_per_hour": 3.0,
+          "score": 70.43928562438862,
+          "replication_mean_tis": [
+            64.25958310581633,
+            64.21728940739337,
+            64.28553473081509,
+            63.90217274841624,
+            64.31399142649532,
+            64.38701486250407,
+            64.23361846411366,
+            64.38443673249729,
+            64.16688044739995,
+            64.29608126829193
+          ]
+        },
+        "high": {
+          "avg_wait_minutes": 23.666666666666668,
+          "avg_time_in_system_minutes": 64.36764000301488,
+          "avg_queue_length": 9.422632386584088,
+          "avg_number_in_system": 13.254299053250753,
+          "dock_utilization": 0.9995124660221542,
+          "staging_overflow_risk": 0.6,
+          "throughput": 3,
+          "effective_flow_rate_per_hour": 3.0,
+          "score": 70.5656898671035,
+          "replication_mean_tis": [
+            64.12770242137613,
+            64.61942112025184,
+            64.00979047537598,
+            64.25253644918716,
+            63.83987799504763,
+            64.8061388764069,
+            65.07923428151906,
+            63.79670016509781,
+            64.87731873820236,
+            64.26767950768406
+          ]
+        }
+      },
+      "verification": {
+        "spec_3_littles_law": {
+          "lhs_avg_number_in_system": 3.9032961037663636,
+          "rhs_lambda_times_W": 3.7996603053308595,
+          "lambda_per_hour_used": 3.046875,
+          "relative_error": 0.027275016740339865,
+          "target_max_error": 0.1,
+          "pass": true
+        },
+        "spec_4_ci_halfwidth": {
+          "n_replications": 16,
+          "mean": 72.893041610566,
+          "half_width": 7.073345725629189,
+          "ratio": 0.09703732440496615,
+          "target_max_ratio": 0.2,
+          "pass": true
+        },
+        "dashboard_cards": [
+          {
+            "title": "Spec 3 - Little's Law",
+            "status": "PASS",
+            "value": 2.73,
+            "unit": "% error",
+            "target": "<= 10%"
+          },
+          {
+            "title": "Spec 4 - CI Half-Width Ratio",
+            "status": "PASS",
+            "value": 9.7,
+            "unit": "% of mean",
+            "target": "<= 20%"
+          }
+        ],
+        "steady_state_reference": {
+          "avg_wait_minutes": 15.54350612737469,
+          "avg_time_in_system_minutes": 74.82407985882308,
+          "avg_queue_length": 0.8755580970058878,
+          "avg_number_in_system": 3.9032961037663636,
+          "dock_utilization": 0.7398994616803012,
+          "staging_overflow_risk": 0.0,
+          "throughput": 24,
+          "effective_flow_rate_per_hour": 3.046875,
+          "score": 74.82407985882308,
+          "replication_mean_tis": [
+            67.61232686957733,
+            68.97082944194607,
+            66.45437198911651,
+            61.93179554053438,
+            62.80507043910819,
+            103.02055488524985,
+            59.53181883525085,
+            68.37561981306774,
+            62.105372670407284,
+            100.3109448708581,
+            80.28028372796507,
+            82.3192900867251,
+            76.82852343060036,
+            59.021838184589946,
+            75.59269872191123,
+            71.12732626214789
+          ]
+        }
+      },
+      "robust_score": 70.5656898671035
+    }
+  ]
+}
