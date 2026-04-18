@@ -13,14 +13,17 @@ from typing import Any
 from .config import YardConfig
 from .engine import (
     apply_action,
+    build_ise_output,
     initialize_state,
     refresh_kpi_cache,
     run_minute_cycle,
+    serialize_action_evaluation,
     snapshot_from_state,
     update_supervisor_inputs,
 )
 from .models import Action, DockState, Recommendation, TriggerEvent, YardState
 from .simulation import compute_clear_rate, dock_load_family, sanitize_assignment_for_dock, update_busy_dock_one_step
+from .verification import build_verification_bundle
 
 
 MAX_ETA_MINUTES = 12 * 60
@@ -262,6 +265,7 @@ class DashboardRuntime:
         )
         latest_trigger = trigger_source_events[-1] if trigger_source_events else None
         top_candidates = self._top_candidate_rows(self.state.last_recommendation)
+        ise_output = self.state.last_ise_output or build_ise_output(self.state, self.config)
 
         decision_status = self.recommendation_decision
         is_applied = self.recommendation_applied
@@ -318,6 +322,8 @@ class DashboardRuntime:
                 "assignment_by_dock": self._recommended_assignment_by_dock(self.state.last_recommendation),
                 "top_candidates": top_candidates,
             },
+            "forecast": dict(snapshot.forecast_summary),
+            "ise_output": ise_output,
             "staging_status": staging_cards,
             "dock_status": dock_rows,
             "resource_summary": snapshot.resource_summary,
@@ -538,9 +544,55 @@ class DashboardRuntime:
         snapshot: Any,
         trend_points: list[TrendPoint],
     ) -> dict[str, dict[str, Any]]:
+        if self.state.recent_replication_means:
+            verification_bundle = build_verification_bundle(
+                arrival_rate_per_hour=float(snapshot.predicted_effective_flow_rate_per_hour or 0.0),
+                avg_time_in_system_minutes=float(snapshot.predicted_avg_time_in_system_minutes or 0.0),
+                avg_number_in_system=float(snapshot.predicted_avg_number_in_system or 0.0),
+                replication_means=list(self.state.recent_replication_means),
+                littles_law_threshold=self.config.verification_littles_law_threshold,
+                ci_threshold=self.config.verification_ci_ratio_threshold,
+            )
+            return self._cards_from_ise_verification(verification_bundle)
         spec3 = self._compute_spec3_card(snapshot=snapshot, trend_points=trend_points)
         spec4 = self._compute_spec4_card(trend_points=trend_points)
         return {"spec_3": spec3, "spec_4": spec4}
+
+    @staticmethod
+    def _cards_from_ise_verification(bundle: dict[str, Any]) -> dict[str, dict[str, Any]]:
+        spec3 = bundle.get("spec_3_littles_law", {})
+        spec4 = bundle.get("spec_4_ci_halfwidth", {})
+        spec3_status = "pass" if spec3.get("pass") else "warn"
+        spec4_status = "pass" if spec4.get("pass") else "warn"
+        return {
+            "spec_3": {
+                "title": "Spec 3 - Little's Law",
+                "status": spec3_status,
+                "current_value": (
+                    f"L={float(spec3.get('lhs_avg_number_in_system', 0.0)):.2f}, "
+                    f"lambda*W={float(spec3.get('rhs_lambda_times_W', 0.0)):.2f}, "
+                    f"error={float(spec3.get('relative_error', 0.0)) * 100.0:.1f}%"
+                ),
+                "target": f"relative error <= {float(spec3.get('target_max_error', 0.25)) * 100.0:.1f}%",
+                "value": float(spec3.get("relative_error", 0.0)),
+                "threshold": float(spec3.get("target_max_error", 0.25)),
+                "details": spec3,
+            },
+            "spec_4": {
+                "title": "Spec 4 - CI Half-Width Ratio",
+                "status": spec4_status,
+                "current_value": (
+                    f"half-width={float(spec4.get('half_width', 0.0)):.3f}, "
+                    f"mean={float(spec4.get('mean', 0.0)):.3f}, "
+                    f"ratio={float(spec4.get('ratio', 0.0)) * 100.0:.1f}%, "
+                    f"n={int(spec4.get('n_replications', 0))}"
+                ),
+                "target": f"ratio <= {float(spec4.get('target_max_ratio', 0.30)) * 100.0:.1f}%",
+                "value": float(spec4.get("ratio", 0.0)),
+                "threshold": float(spec4.get("target_max_ratio", 0.30)),
+                "details": spec4,
+            },
+        }
 
     def _compute_spec3_card(
         self,
@@ -655,13 +707,39 @@ class DashboardRuntime:
                 "text": "No active recommendation.",
                 "rationale": "Waiting for next trigger.",
                 "score": None,
+                "robust_score": None,
                 "candidate_scores": {},
+                "selected_baseline_metrics": {},
+                "forecast": {},
+                "verification_bundle": {},
+                "evaluations": [],
             }
+        evaluations = [serialize_action_evaluation(evaluation) for evaluation in recommendation.evaluations]
+        forecast = recommendation.forecast
         return {
             "text": recommendation.rationale,
             "rationale": recommendation.rationale,
             "score": round(recommendation.score, 3),
+            "robust_score": round(
+                recommendation.robust_score if recommendation.robust_score > 0 else recommendation.score,
+                3,
+            ),
             "candidate_scores": {
                 key: round(value, 3) for key, value in recommendation.candidate_scores.items()
             },
+            "selected_baseline_metrics": dict(recommendation.selected_baseline_metrics),
+            "forecast": (
+                {
+                    "baseline_rate_per_hour": forecast.baseline_rate_per_hour,
+                    "smoothed_rate_per_hour": forecast.smoothed_rate_per_hour,
+                    "expected_arrivals": forecast.expected_arrivals,
+                    "scenarios": dict(forecast.scenarios),
+                    "window_minutes": forecast.window_minutes,
+                    "observed_arrivals": forecast.observed_arrivals,
+                }
+                if forecast is not None
+                else {}
+            ),
+            "verification_bundle": dict(recommendation.verification),
+            "evaluations": evaluations,
         }

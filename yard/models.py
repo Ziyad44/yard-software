@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 
 EPSILON = 1e-6
@@ -54,6 +54,18 @@ class Truck:
         if self.departure_minute is None:
             return None
         return max(self.departure_minute - self.gate_arrival_minute, 0)
+
+    @property
+    def waiting_time_before_unload_minutes(self) -> Optional[int]:
+        if self.unload_start_minute is None:
+            return None
+        return max(self.unload_start_minute - self.gate_arrival_minute, 0)
+
+    @property
+    def service_time_minutes(self) -> Optional[int]:
+        if self.departure_minute is None or self.unload_start_minute is None:
+            return None
+        return max(self.departure_minute - self.unload_start_minute, 0)
 
 
 @dataclass
@@ -139,6 +151,35 @@ class Action:
 
 
 @dataclass
+class ForecastResult:
+    """ISE-style short-horizon arrival forecast summary."""
+
+    baseline_rate_per_hour: float
+    smoothed_rate_per_hour: float
+    expected_arrivals: float
+    scenarios: dict[str, float] = field(default_factory=dict)
+    window_minutes: int = 0
+    observed_arrivals: int = 0
+
+
+@dataclass
+class ScenarioMetrics:
+    """Scenario-level KPI bundle used for robust action comparison."""
+
+    scenario_name: str
+    arrival_rate_per_hour: float
+    predicted_avg_wait_minutes: float
+    predicted_avg_time_in_system_minutes: float
+    predicted_queue_length: float
+    predicted_avg_number_in_system: float
+    predicted_dock_utilization: float
+    predicted_staging_overflow_risk: float
+    throughput_trucks_per_hour: float
+    effective_flow_rate_per_hour: float
+    score: float
+
+
+@dataclass
 class ActionEvaluation:
     """Near-term simulated outcome for one candidate action."""
 
@@ -149,6 +190,14 @@ class ActionEvaluation:
     predicted_dock_utilization: float
     predicted_staging_overflow_risk: float
     score: float
+    predicted_avg_number_in_system: float = 0.0
+    throughput_trucks_per_hour: float = 0.0
+    effective_flow_rate_per_hour: float = 0.0
+    robust_score: float = 0.0
+    scenario_metrics: dict[str, ScenarioMetrics] = field(default_factory=dict)
+    replication_count: int = 1
+    replication_avg_tis: list[float] = field(default_factory=list)
+    verification: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 @dataclass
@@ -159,6 +208,11 @@ class Recommendation:
     rationale: str
     score: float
     candidate_scores: dict[str, float] = field(default_factory=dict)
+    robust_score: float = 0.0
+    forecast: Optional[ForecastResult] = None
+    evaluations: list[ActionEvaluation] = field(default_factory=list)
+    verification: dict[str, dict[str, Any]] = field(default_factory=dict)
+    selected_baseline_metrics: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass
@@ -187,6 +241,13 @@ class SystemSnapshot:
     predicted_dock_utilization: Optional[float]
     predicted_staging_overflow_risk: Optional[float]
     recommended_action_text: Optional[str]
+    predicted_queue_length: Optional[float] = None
+    predicted_avg_number_in_system: Optional[float] = None
+    predicted_throughput_trucks_per_hour: Optional[float] = None
+    predicted_effective_flow_rate_per_hour: Optional[float] = None
+    forecast_summary: dict[str, Any] = field(default_factory=dict)
+    verification_details: dict[str, dict[str, Any]] = field(default_factory=dict)
+    ise_evaluations: list[dict[str, Any]] = field(default_factory=list)
     docks: list[DockSummary] = field(default_factory=list)
     resource_summary: dict[str, int] = field(default_factory=dict)
     verification_placeholder: dict[str, str] = field(default_factory=dict)
@@ -208,8 +269,11 @@ class YardState:
     last_review_minute: int = 0
     next_review_minute: int = 15
     recent_triggers: list[TriggerEvent] = field(default_factory=list)
+    arrival_history: list[tuple[int, int]] = field(default_factory=list)
     kpi_cache: dict[str, float] = field(default_factory=dict)
     next_truck_sequence: int = 1
+    recent_replication_means: list[float] = field(default_factory=list)
+    last_ise_output: dict[str, Any] = field(default_factory=dict)
 
     @property
     def queue_length(self) -> int:

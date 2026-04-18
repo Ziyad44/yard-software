@@ -22,9 +22,12 @@ export function renderRecommendationPanel(payload) {
   const recommendation = payload.recommendation || {};
   const selectedAction = recommendation.selected_action_name || "none";
   const scoreText = recommendation.score == null ? "-" : toNumber(recommendation.score, 0).toFixed(3);
+  const robustScoreText =
+    recommendation.robust_score == null ? "-" : toNumber(recommendation.robust_score, 0).toFixed(3);
   const holdGate = recommendation.hold_gate_release ? "ON" : "OFF";
   const latestTriggerType = recommendation.latest_trigger_type || "none";
   const latestTriggerReason = recommendation.latest_trigger_reason || "none";
+  const baseline = recommendation.selected_baseline_metrics || {};
 
   const headline = document.getElementById("recommendationHeadline");
   if (headline) {
@@ -43,8 +46,11 @@ export function renderRecommendationPanel(payload) {
       chip("Reason", latestTriggerReason),
       chip("Action", selectedAction),
       chip("Score", scoreText),
+      chip("Robust", robustScoreText),
       chip("Hold Gate", holdGate),
       chip("Decision", recommendation.decision_status || "none"),
+      chip("Pred Wait", `${toNumber(baseline.predicted_avg_wait_minutes, 0).toFixed(2)}m`),
+      chip("Pred TIS", `${toNumber(baseline.predicted_avg_time_in_system_minutes, 0).toFixed(2)}m`),
     ];
     meta.innerHTML = chips.join("");
   }

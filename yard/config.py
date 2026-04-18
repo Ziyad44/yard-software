@@ -42,6 +42,9 @@ class YardConfig:
     time_step_minutes: int = 1
     review_interval_minutes: int = 15
     lookahead_horizon_minutes: int = 30
+    forecast_window_minutes: int = 30
+    forecast_smoothing_alpha: float = 0.35
+    forecast_scenario_delta: float = 0.20
 
     staging_capacity_units: float = 100.0
     staging_high_threshold: float = 0.85
@@ -64,6 +67,9 @@ class YardConfig:
 
     # Avoid unnecessary action churn
     min_score_improvement_to_switch: float = 0.05
+    evaluation_replications: int = 4
+    verification_littles_law_threshold: float = 0.25
+    verification_ci_ratio_threshold: float = 0.30
 
     truck_type_mix: dict[str, float] = field(default_factory=lambda: dict(DEFAULT_TRUCK_TYPE_MIX))
     truck_load_units: dict[str, float] = field(default_factory=lambda: dict(DEFAULT_TRUCK_LOAD_UNITS))

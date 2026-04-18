@@ -27,6 +27,8 @@ function verificationClass(status) {
 
 export function renderAnalytics(payload) {
   const kpis = payload.kpis || {};
+  const forecast = payload.forecast || {};
+  const scenarios = forecast.scenarios || {};
   const analyticsCards = [
     ["Predicted Avg Wait", `${toNumber(kpis.predicted_avg_wait_minutes, 0).toFixed(2)} min`],
     ["Predicted Avg Time In System", `${toNumber(kpis.predicted_avg_time_in_system_minutes, 0).toFixed(2)} min`],
@@ -34,6 +36,12 @@ export function renderAnalytics(payload) {
     ["Predicted Staging Overflow Risk", `${toNumber(kpis.staging_risk_pct, 0).toFixed(1)}%`],
     ["Throughput", `${toNumber(kpis.throughput_trucks_per_hour, 0).toFixed(2)} trucks/h`],
     ["Queue Length", `${toNumber(kpis.queue_length, 0)}`],
+    ["Forecast Baseline", `${toNumber(forecast.baseline_rate_per_hour, 0).toFixed(2)} /h`],
+    ["Forecast Smoothed", `${toNumber(forecast.smoothed_rate_per_hour, 0).toFixed(2)} /h`],
+    ["Expected Arrivals", `${toNumber(forecast.expected_arrivals, 0).toFixed(2)}`],
+    ["Scenario Low", `${toNumber(scenarios.low, 0).toFixed(2)} /h`],
+    ["Scenario Baseline", `${toNumber(scenarios.baseline, 0).toFixed(2)} /h`],
+    ["Scenario High", `${toNumber(scenarios.high, 0).toFixed(2)} /h`],
   ];
 
   const cardsTarget = document.getElementById("analyticsKpiCards");

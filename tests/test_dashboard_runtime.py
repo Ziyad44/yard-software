@@ -27,6 +27,8 @@ def test_dashboard_payload_contains_required_sections() -> None:
     assert "live_operations" in payload
     assert "kpis" in payload
     assert "recommendation" in payload
+    assert "forecast" in payload
+    assert "ise_output" in payload
     assert "staging_status" in payload
     assert "dock_status" in payload
     assert "resource_summary" in payload

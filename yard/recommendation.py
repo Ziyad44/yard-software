@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import copy
-import random
-
 from .config import YardConfig
-from .models import Action, ActionEvaluation, Recommendation, YardState
-from .simulation import dock_load_family, sanitize_assignment_for_dock, simulate_horizon
+from .evaluation import evaluate_action_across_scenarios
+from .forecasting import build_forecast
+from .models import Action, ActionEvaluation, ForecastResult, Recommendation, YardState
+from .simulation import dock_load_family, sanitize_assignment_for_dock
 
 
 def _assignments_from_state(state: YardState, config: YardConfig) -> tuple[dict[int, int], dict[int, int]]:
@@ -199,66 +198,51 @@ def build_candidate_actions(state: YardState, config: YardConfig) -> list[Action
     return _dedupe_actions(actions)
 
 
-def _apply_action_assignments(state: YardState, action: Action, *, config: YardConfig) -> None:
+def _effective_score(evaluation: ActionEvaluation) -> float:
+    if evaluation.robust_score > 0.0:
+        return evaluation.robust_score
+    return evaluation.score
+
+
+def _is_equivalent_to_live_plan(action: Action, state: YardState) -> bool:
+    if bool(action.hold_gate_release) != bool(state.hold_gate_release):
+        return False
     for dock_id, dock in state.docks.items():
         if not dock.active:
             continue
-        workers, forklifts = sanitize_assignment_for_dock(
-            dock=dock,
-            workers=int(action.workers_by_dock.get(dock_id, 0)),
-            forklifts=int(action.forklifts_by_dock.get(dock_id, 0)),
-            max_unloaders_per_dock=config.max_unloaders_per_dock,
-        )
-        dock.assigned_workers = workers
-        dock.assigned_forklifts = forklifts
-    state.hold_gate_release = bool(action.hold_gate_release)
-    state.update_resource_assignment_counters()
+        if int(action.workers_by_dock.get(dock_id, 0)) != int(dock.assigned_workers):
+            return False
+        if int(action.forklifts_by_dock.get(dock_id, 0)) != int(dock.assigned_forklifts):
+            return False
+    return True
 
 
-def _score_evaluation(evaluation: ActionEvaluation) -> float:
-    """
-    Weighted score for candidate comparison.
-
-    Lower is better.
-    """
-    return (
-        1.0 * evaluation.predicted_avg_wait_minutes
-        + 0.6 * evaluation.predicted_avg_time_in_system_minutes
-        + 0.3 * evaluation.predicted_queue_length
-        + 25.0 * evaluation.predicted_staging_overflow_risk
-    )
-
-
-def evaluate_candidates(state: YardState, config: YardConfig, rng_seed: int = 7) -> list[ActionEvaluation]:
+def evaluate_candidates(
+    state: YardState,
+    config: YardConfig,
+    rng_seed: int = 7,
+    forecast: ForecastResult | None = None,
+) -> list[ActionEvaluation]:
     """
     Simulate near-term outcomes for each candidate action.
 
-    Phase-1 note:
-    The horizon metrics are intentionally lightweight and will be strengthened in Phase 2.
+    Evaluate each candidate under low/baseline/high scenarios with replications.
     """
     evaluations: list[ActionEvaluation] = []
     candidates = build_candidate_actions(state, config)
+    forecast_result = forecast if forecast is not None else build_forecast(state, config)
+    scenario_rates = forecast_result.scenarios or {"baseline": config.arrival_rate_per_hour}
 
     for index, action in enumerate(candidates):
-        scenario_state = copy.deepcopy(state)
-        _apply_action_assignments(scenario_state, action, config=config)
-        snapshot = simulate_horizon(
-            scenario_state,
-            config=config,
-            minutes=config.lookahead_horizon_minutes,
-            rng=random.Random(rng_seed + index),
-        )
-
-        evaluation = ActionEvaluation(
+        evaluation = evaluate_action_across_scenarios(
+            state=state,
             action=action,
-            predicted_avg_wait_minutes=float(snapshot.predicted_avg_wait_minutes or 0.0),
-            predicted_avg_time_in_system_minutes=float(snapshot.predicted_avg_time_in_system_minutes or 0.0),
-            predicted_queue_length=float(snapshot.queue_length),
-            predicted_dock_utilization=float(snapshot.predicted_dock_utilization or 0.0),
-            predicted_staging_overflow_risk=float(snapshot.predicted_staging_overflow_risk or 0.0),
-            score=0.0,
+            config=config,
+            scenario_rates=scenario_rates,
+            rng_seed=rng_seed + index * 31,
         )
-        evaluation.score = _score_evaluation(evaluation)
+        if evaluation.robust_score <= 0.0:
+            evaluation.robust_score = evaluation.score
         evaluations.append(evaluation)
 
     return evaluations
@@ -280,11 +264,12 @@ def _action_to_plain_language(action: Action) -> str:
 
 def recommend_best_action(state: YardState, config: YardConfig) -> Recommendation | None:
     """Return a recommendation if at least one candidate can be evaluated."""
-    evaluations = evaluate_candidates(state, config=config)
+    forecast = build_forecast(state, config)
+    evaluations = evaluate_candidates(state, config=config, forecast=forecast)
     if not evaluations:
         return None
 
-    evaluations.sort(key=lambda item: item.score)
+    evaluations.sort(key=_effective_score)
     best = evaluations[0]
     chosen = best
 
@@ -293,19 +278,45 @@ def recommend_best_action(state: YardState, config: YardConfig) -> Recommendatio
         None,
     )
     if current_plan_eval is not None and best.action.action_name != "keep_current_plan":
-        if current_plan_eval.score > 0.0:
-            relative_improvement = (current_plan_eval.score - best.score) / current_plan_eval.score
+        current_plan_score = _effective_score(current_plan_eval)
+        best_score = _effective_score(best)
+        if current_plan_score > 0.0:
+            relative_improvement = (current_plan_score - best_score) / current_plan_score
             if relative_improvement < config.min_score_improvement_to_switch:
                 chosen = current_plan_eval
         else:
             chosen = current_plan_eval
+    if (
+        current_plan_eval is not None
+        and chosen.action.action_name != "keep_current_plan"
+        and _is_equivalent_to_live_plan(chosen.action, state)
+    ):
+        chosen = current_plan_eval
 
-    candidate_scores = {item.action.action_name: item.score for item in evaluations}
+    candidate_scores = {item.action.action_name: _effective_score(item) for item in evaluations}
     rationale = _action_to_plain_language(chosen.action)
+    baseline_metrics = chosen.scenario_metrics.get("baseline")
+    selected_baseline_metrics = {
+        "predicted_avg_wait_minutes": chosen.predicted_avg_wait_minutes,
+        "predicted_avg_time_in_system_minutes": chosen.predicted_avg_time_in_system_minutes,
+        "predicted_queue_length": chosen.predicted_queue_length,
+        "predicted_avg_number_in_system": chosen.predicted_avg_number_in_system,
+        "predicted_dock_utilization": chosen.predicted_dock_utilization,
+        "predicted_staging_overflow_risk": chosen.predicted_staging_overflow_risk,
+        "throughput_trucks_per_hour": chosen.throughput_trucks_per_hour,
+        "effective_flow_rate_per_hour": chosen.effective_flow_rate_per_hour,
+    }
+    if baseline_metrics is not None:
+        selected_baseline_metrics["scenario_score"] = baseline_metrics.score
 
     return Recommendation(
         selected_action=chosen.action,
         rationale=rationale,
         score=chosen.score,
         candidate_scores=candidate_scores,
+        robust_score=chosen.robust_score,
+        forecast=forecast,
+        evaluations=evaluations,
+        verification=chosen.verification,
+        selected_baseline_metrics=selected_baseline_metrics,
     )

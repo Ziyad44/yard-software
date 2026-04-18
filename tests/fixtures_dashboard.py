@@ -196,6 +196,8 @@ def assert_dashboard_matches_backend(runtime: DashboardRuntime, payload: dict[st
         "supervisor_inputs",
         "kpis",
         "recommendation",
+        "forecast",
+        "ise_output",
         "staging_status",
         "dock_status",
         "resource_summary",
@@ -220,6 +222,20 @@ def assert_dashboard_matches_backend(runtime: DashboardRuntime, payload: dict[st
     assert live_ops["completed_trucks_count"] == len(state.completed_trucks)
     assert live_ops["arrivals_last_step"] >= 0
     assert live_ops["arrivals_total"] >= live_ops["arrivals_last_step"]
+    forecast = payload["forecast"]
+    assert "baseline_rate_per_hour" in forecast
+    assert "smoothed_rate_per_hour" in forecast
+    assert "expected_arrivals" in forecast
+    assert "scenarios" in forecast
+    assert set(forecast["scenarios"].keys()) >= {"low", "baseline", "high"}
+    assert forecast["scenarios"]["low"] <= forecast["scenarios"]["baseline"] <= forecast["scenarios"]["high"]
+
+    ise_output = payload["ise_output"]
+    assert "snapshot" in ise_output
+    assert "forecast" in ise_output
+    assert "best_recommendation" in ise_output
+    assert "verification" in ise_output
+    assert "evaluations" in ise_output
 
     supervisor = payload["supervisor_inputs"]
     assert supervisor["active_docks"] == sum(1 for dock in state.docks.values() if dock.active)
@@ -279,6 +295,8 @@ def assert_dashboard_matches_backend(runtime: DashboardRuntime, payload: dict[st
         assert rec_payload["decision_status"] == runtime.recommendation_decision
         assert rec_payload["selected_action_name"] == rec_state.selected_action.action_name
         assert rec_payload["hold_gate_release"] == rec_state.selected_action.hold_gate_release
+        assert rec_payload["forecast"]
+        assert rec_payload["evaluations"]
     assert rec_payload["minute_generated"] == runtime.last_recommendation_minute
 
     trigger_source_events = runtime.recommendation_trigger_batch if rec_state is not None else []
@@ -293,10 +311,12 @@ def assert_dashboard_matches_backend(runtime: DashboardRuntime, payload: dict[st
         assert rec_payload["latest_trigger_reason"] is None
         assert rec_payload["assignment_by_dock"] == []
         assert rec_payload["top_candidates"] == []
+        assert rec_payload["evaluations"] == []
     else:
         assert isinstance(rec_payload["assignment_by_dock"], list)
         assert isinstance(rec_payload["top_candidates"], list)
         assert len(rec_payload["top_candidates"]) <= 3
+        assert rec_payload["robust_score"] is not None
         if trigger_source_events:
             assert rec_payload["latest_trigger_type"] == trigger_source_events[-1].trigger_type
             assert rec_payload["latest_trigger_reason"] == trigger_source_events[-1].reason

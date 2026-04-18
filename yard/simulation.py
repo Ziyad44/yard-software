@@ -62,6 +62,14 @@ def generate_arrivals_for_minute(state: YardState, config: YardConfig, rng: rand
         arrivals.append(truck)
 
     state.waiting_queue.extend(arrivals)
+    state.arrival_history.append((state.now_minute, count))
+    max_history_minutes = max(config.forecast_window_minutes * 3, config.lookahead_horizon_minutes * 3, 60)
+    cutoff = state.now_minute - max_history_minutes
+    state.arrival_history = [
+        (minute, arrivals_count)
+        for minute, arrivals_count in state.arrival_history
+        if minute >= cutoff
+    ]
     return arrivals
 
 
@@ -358,15 +366,20 @@ def simulate_horizon(
 
     temp_state = copy.deepcopy(state)
     queue_sum = 0.0
+    number_in_system_sum = 0.0
     utilization_sum = 0.0
     staging_risk_sum = 0.0
+    start_minute = temp_state.now_minute
+    completed_before = len(temp_state.completed_trucks)
 
     for _ in range(minutes):
         simulate_one_minute(temp_state, config, rng)
         queue_sum += temp_state.queue_length
 
         active_docks = [d for d in temp_state.docks.values() if d.active]
-        busy_docks = [d for d in active_docks if d.current_truck is not None]
+        busy_docks = [d for d in active_docks if d.phase != "idle"]
+        trucks_in_service = sum(1 for d in active_docks if d.current_truck is not None)
+        number_in_system_sum += temp_state.queue_length + trucks_in_service
         if active_docks:
             utilization_sum += len(busy_docks) / len(active_docks)
             staging_risk_sum += sum(
@@ -379,18 +392,69 @@ def simulate_horizon(
     avg_utilization = utilization_sum / minutes if minutes > 0 else 0.0
     avg_staging_risk = staging_risk_sum / minutes if minutes > 0 else 0.0
 
-    # Placeholder for Phase 2. Average waiting is approximated by average queue in this scaffold.
-    approx_avg_wait = avg_queue
-    approx_avg_tis = approx_avg_wait + 20.0
+    completed_in_horizon = [
+        truck
+        for truck in temp_state.completed_trucks[completed_before:]
+        if truck.departure_minute is not None and truck.departure_minute > start_minute
+    ]
+    waits = [
+        float(truck.waiting_time_before_unload_minutes)
+        for truck in completed_in_horizon
+        if truck.waiting_time_before_unload_minutes is not None
+    ]
+    tis_values = [
+        float(truck.total_time_in_system_minutes)
+        for truck in completed_in_horizon
+        if truck.total_time_in_system_minutes is not None
+    ]
+
+    avg_wait = sum(waits) / len(waits) if waits else avg_queue
+    if tis_values:
+        avg_tis = sum(tis_values) / len(tis_values)
+    else:
+        historical_service = [
+            float(truck.service_time_minutes)
+            for truck in temp_state.completed_trucks
+            if truck.service_time_minutes is not None
+        ]
+        if historical_service:
+            service_proxy = sum(historical_service) / len(historical_service)
+        else:
+            mix = config.normalized_truck_type_mix()
+            service_proxy = 0.0
+            for truck_type, probability in mix.items():
+                load_units = float(config.truck_load_units[truck_type])
+                if truck_type.endswith("_floor"):
+                    unload_capacity = max(
+                        config.floor_unload_worker_rate * max(config.max_unloaders_per_dock, 1),
+                        EPSILON,
+                    )
+                    clear_capacity = max(config.clear_worker_rate * max(config.max_unloaders_per_dock, 1), EPSILON)
+                else:
+                    unload_capacity = max(config.pallet_unload_forklift_rate, EPSILON)
+                    clear_capacity = max(config.clear_forklift_rate, EPSILON)
+                service_proxy += probability * (
+                    load_units / unload_capacity + load_units / clear_capacity
+                )
+        avg_tis = avg_wait + service_proxy
+
+    avg_number_in_system = number_in_system_sum / minutes if minutes > 0 else 0.0
+    departures_count = len(completed_in_horizon)
+    throughput_trucks_per_hour = departures_count * (60.0 / minutes)
+    effective_flow_rate_per_hour = throughput_trucks_per_hour
 
     return SystemSnapshot(
         minute=temp_state.now_minute,
         queue_length=temp_state.queue_length,
-        predicted_avg_wait_minutes=approx_avg_wait,
-        predicted_avg_time_in_system_minutes=approx_avg_tis,
+        predicted_avg_wait_minutes=avg_wait,
+        predicted_avg_time_in_system_minutes=avg_tis,
         predicted_dock_utilization=avg_utilization,
         predicted_staging_overflow_risk=avg_staging_risk,
         recommended_action_text=None,
+        predicted_queue_length=avg_queue,
+        predicted_avg_number_in_system=avg_number_in_system,
+        predicted_throughput_trucks_per_hour=throughput_trucks_per_hour,
+        predicted_effective_flow_rate_per_hour=effective_flow_rate_per_hour,
         docks=[],
         resource_summary={},
         verification_placeholder={},

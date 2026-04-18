@@ -21,6 +21,9 @@ The version-1 architecture for new implementation work is documented in:
 - `yard/models.py`
 - `yard/simulation.py`
 - `yard/recommendation.py`
+- `yard/forecasting.py`
+- `yard/evaluation.py`
+- `yard/verification.py`
 - `yard/engine.py`
 - `yard/demo_runner.py`
 - `yard/dashboard_runtime.py`
@@ -76,3 +79,9 @@ pytest -q
   - dark/light theme toggle with dark default and persisted preference,
   - queue and gate-history tables (arrival/departure/total time in system),
   - queue/staging/utilization trend charts and ISE-style verification cards.
+- ISE-inspired analytics pipeline now includes:
+  - low/baseline/high arrival forecast scenarios,
+  - replication-based action evaluation,
+  - robust action scoring across scenarios,
+  - Little's Law and CI half-width verification bundles,
+  - enriched output structure: `snapshot`, `forecast`, `best_recommendation`, `verification`, `evaluations`.
