@@ -71,3 +71,11 @@ def test_dashboard_html_includes_readable_chart_axes_and_labels() -> None:
     assert "t=${xEnd}" in HTML_PAGE
     assert "text-anchor=\"end\"" in HTML_PAGE
     assert "yLabel" in HTML_PAGE
+
+
+def test_dashboard_html_includes_queue_and_gate_history_page() -> None:
+    assert "Queue & Gate History" in HTML_PAGE
+    assert "id=\"navQueueHistory\"" in HTML_PAGE
+    assert "id=\"queueHistoryPage\"" in HTML_PAGE
+    assert "id=\"queueTableBody\"" in HTML_PAGE
+    assert "id=\"gateHistoryTableBody\"" in HTML_PAGE

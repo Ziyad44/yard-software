@@ -9,6 +9,7 @@ from yard.simulation import (
     compute_clear_rate,
     compute_unload_rate,
     generate_arrivals_for_minute,
+    simulate_one_minute,
     update_busy_dock_one_step,
 )
 
@@ -247,3 +248,44 @@ def test_arrivals_feed_waiting_queue() -> None:
         generate_arrivals_for_minute(state, config, rng)
 
     assert state.queue_length >= baseline
+
+
+def test_completion_records_departure_and_gate_history() -> None:
+    config = YardConfig(
+        arrival_rate_per_hour=0.0,
+        review_interval_minutes=999,
+        floor_unload_worker_rate=4.0,
+        clear_worker_rate=4.0,
+        clear_forklift_rate=0.0,
+    )
+    state = initialize_state(
+        available_workers=1,
+        available_forklifts=0,
+        active_docks=1,
+        max_unloaders_per_dock=config.max_unloaders_per_dock,
+        config=config,
+    )
+    dock = state.docks[1]
+    dock.current_truck = Truck(
+        truck_id="T-HIST-1",
+        truck_type="small_floor",
+        initial_load_units=4.0,
+        remaining_load_units=4.0,
+        gate_arrival_minute=0,
+        assigned_dock_id=1,
+        unload_start_minute=0,
+    )
+    dock.assigned_workers = 1
+    dock.assigned_forklifts = 0
+    dock.staging.occupancy_units = 0.0
+    dock.staging.load_family = "floor"
+    state.update_resource_assignment_counters()
+
+    triggers = simulate_one_minute(state, config=config, rng=random.Random(77))
+
+    assert any(event.trigger_type == "dock_freed" for event in triggers)
+    assert len(state.completed_trucks) == 1
+    completed = state.completed_trucks[0]
+    assert completed.truck_id == "T-HIST-1"
+    assert completed.departure_minute == state.now_minute
+    assert completed.total_time_in_system_minutes == completed.departure_minute - completed.gate_arrival_minute

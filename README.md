@@ -66,5 +66,7 @@ pytest -q
   - supervisor input updates,
   - manual step/run controls,
   - recommendation apply / keep-current-plan decisions,
+  - queue view (current waiting trucks),
+  - gate history view (completed trucks with arrival/departure/waiting time),
   - staging/dock/resource/KPI views,
   - basic trend charts.

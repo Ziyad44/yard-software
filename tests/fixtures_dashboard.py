@@ -67,6 +67,7 @@ def seed_yard_state(
 ) -> None:
     state = runtime.state
     state.waiting_queue.clear()
+    state.completed_trucks.clear()
     state.last_recommendation = None
     state.hold_gate_release = False
     runtime.last_recommendation_minute = None
@@ -188,6 +189,8 @@ def assert_dashboard_matches_backend(runtime: DashboardRuntime, payload: dict[st
         "dock_status",
         "resource_summary",
         "verification",
+        "queue_table",
+        "gate_history",
         "trends",
     ):
         assert required in payload
@@ -273,6 +276,24 @@ def assert_dashboard_matches_backend(runtime: DashboardRuntime, payload: dict[st
     assert length >= 1
     assert length == len(trends["queue_length"]) == len(trends["arrivals"]) == len(trends["max_staging_occupancy_pct"])
     assert trends["minutes"][-1] == state.now_minute
+
+    queue_table = payload["queue_table"]
+    assert len(queue_table) == len(state.waiting_queue)
+    for row, truck in zip(queue_table, state.waiting_queue):
+        assert row["truck_id"] == truck.truck_id
+        assert row["truck_type"] == truck.truck_type
+        assert row["load_units"] == pytest.approx(round(float(truck.initial_load_units), 2), abs=0.01)
+        assert row["gate_arrival"] == truck.gate_arrival_minute
+
+    gate_history = payload["gate_history"]
+    assert len(gate_history) == len(state.completed_trucks)
+    for row, truck in zip(gate_history, state.completed_trucks):
+        assert row["truck_id"] == truck.truck_id
+        assert row["truck_type"] == truck.truck_type
+        assert row["load_units"] == pytest.approx(round(float(truck.initial_load_units), 2), abs=0.01)
+        assert row["gate_arrival"] == truck.gate_arrival_minute
+        assert row["departure_minute"] == truck.departure_minute
+        assert row["waiting_time_minutes"] == truck.total_time_in_system_minutes
 
     # Global invariants
     assert all(0.0 <= dock.staging.occupancy_units <= 100.0 for dock in state.docks.values())

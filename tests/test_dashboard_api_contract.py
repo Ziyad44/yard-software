@@ -40,6 +40,8 @@ def test_dashboard_api_contract_state_and_lifecycle() -> None:
         assert "kpis" in initial
         assert "dock_status" in initial
         assert "trends" in initial
+        assert "queue_table" in initial
+        assert "gate_history" in initial
         assert "spec_3" in initial["verification"]
         assert "spec_4" in initial["verification"]
         if initial["recommendation"]["minute_generated"] is None:

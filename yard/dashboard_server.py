@@ -71,11 +71,27 @@ HTML_PAGE = """<!doctype html>
       border-radius: 999px;
       font-size: 0.95rem;
     }
-    main {
+    .nav-tabs {
+      margin-top: 10px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .nav-tabs button {
+      background: #6c7f8a;
+    }
+    .nav-tabs button.active {
+      background: var(--accent);
+      color: white;
+    }
+    .dashboard-page {
       padding: 14px;
       display: grid;
       gap: 12px;
       grid-template-columns: repeat(12, minmax(0, 1fr));
+    }
+    .page-hidden {
+      display: none;
     }
     .panel {
       background: var(--card);
@@ -264,6 +280,12 @@ HTML_PAGE = """<!doctype html>
       color: var(--muted);
       font-size: 0.8rem;
     }
+    .table-wrap {
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fcfeff;
+    }
     @media (max-width: 980px) {
       .span-4, .span-5, .span-6, .span-7, .span-8, .span-12 { grid-column: span 12; }
       .grid-kpi { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -277,8 +299,12 @@ HTML_PAGE = """<!doctype html>
       <h1 class="title">Yard Control Dashboard v1</h1>
       <div class="clock" id="minuteClock">Minute 0</div>
     </div>
+    <div class="nav-tabs">
+      <button type="button" id="navOperations" class="active">Operations</button>
+      <button type="button" id="navQueueHistory">Queue & Gate History</button>
+    </div>
   </header>
-  <main>
+  <main id="operationsPage" class="dashboard-page">
     <section class="panel span-4">
       <h2>Supervisor Inputs</h2>
       <form id="supervisorForm">
@@ -360,6 +386,37 @@ HTML_PAGE = """<!doctype html>
           <svg id="stagingChart" class="chart-svg" viewBox="0 0 300 120" preserveAspectRatio="none"></svg>
         </div>
       </div>
+    </section>
+  </main>
+  <main id="queueHistoryPage" class="dashboard-page page-hidden">
+    <section class="panel span-12">
+      <h2>Current Waiting Queue</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Truck ID</th><th>Truck Type</th><th>Load Units</th><th>Gate Arrival</th>
+            </tr>
+          </thead>
+          <tbody id="queueTableBody"></tbody>
+        </table>
+      </div>
+      <div id="queueEmptyNote" class="small-note" style="margin-top:8px;"></div>
+    </section>
+
+    <section class="panel span-12">
+      <h2>Gate History</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Truck ID</th><th>Truck Type</th><th>Load Units</th><th>Gate Arrival</th><th>Departure</th><th>Waiting Time (min)</th>
+            </tr>
+          </thead>
+          <tbody id="gateHistoryTableBody"></tbody>
+        </table>
+      </div>
+      <div id="gateHistoryEmptyNote" class="small-note" style="margin-top:8px;"></div>
     </section>
   </main>
 
@@ -453,6 +510,36 @@ HTML_PAGE = """<!doctype html>
       `).join("");
     }
 
+    function renderQueueTable(rows) {
+      const body = document.getElementById("queueTableBody");
+      body.innerHTML = rows.map(row => `
+        <tr>
+          <td>${row.truck_id}</td>
+          <td>${row.truck_type}</td>
+          <td>${Number(row.load_units).toFixed(1)}</td>
+          <td>${row.gate_arrival}</td>
+        </tr>
+      `).join("");
+      document.getElementById("queueEmptyNote").textContent =
+        rows.length ? `${rows.length} truck(s) currently waiting.` : "No trucks currently waiting in queue.";
+    }
+
+    function renderGateHistory(rows) {
+      const body = document.getElementById("gateHistoryTableBody");
+      body.innerHTML = rows.map(row => `
+        <tr>
+          <td>${row.truck_id}</td>
+          <td>${row.truck_type}</td>
+          <td>${Number(row.load_units).toFixed(1)}</td>
+          <td>${row.gate_arrival}</td>
+          <td>${row.departure_minute == null ? "-" : row.departure_minute}</td>
+          <td>${row.waiting_time_minutes == null ? "-" : row.waiting_time_minutes}</td>
+        </tr>
+      `).join("");
+      document.getElementById("gateHistoryEmptyNote").textContent =
+        rows.length ? `${rows.length} truck(s) have completed staging.` : "No completed trucks yet.";
+    }
+
     function renderVerification(verification) {
       const entries = Object.entries(verification || {});
       document.getElementById("verificationCards").innerHTML = entries.map(([name, card]) => `
@@ -517,9 +604,24 @@ HTML_PAGE = """<!doctype html>
       renderStaging(payload.staging_status);
       renderDockTable(payload.dock_status);
       renderVerification(payload.verification);
+      renderQueueTable(payload.queue_table || []);
+      renderGateHistory(payload.gate_history || []);
       renderLineChart("queueChart", payload.trends.queue_length, "#0c7b93", null, payload.trends.minutes, "queue");
       renderLineChart("arrivalChart", payload.trends.arrivals, "#2f8f4e", null, payload.trends.minutes, "arrivals");
       renderLineChart("stagingChart", payload.trends.max_staging_occupancy_pct, "#c8473f", 100, payload.trends.minutes, "staging%");
+    }
+
+    function setPage(pageName) {
+      const operationsPage = document.getElementById("operationsPage");
+      const queueHistoryPage = document.getElementById("queueHistoryPage");
+      const navOperations = document.getElementById("navOperations");
+      const navQueueHistory = document.getElementById("navQueueHistory");
+
+      const showQueueHistory = pageName === "queue_history";
+      operationsPage.classList.toggle("page-hidden", showQueueHistory);
+      queueHistoryPage.classList.toggle("page-hidden", !showQueueHistory);
+      navOperations.classList.toggle("active", !showQueueHistory);
+      navQueueHistory.classList.toggle("active", showQueueHistory);
     }
 
     async function refresh() {
@@ -555,6 +657,8 @@ HTML_PAGE = """<!doctype html>
     }
 
     function wireEvents() {
+      document.getElementById("navOperations").addEventListener("click", () => setPage("operations"));
+      document.getElementById("navQueueHistory").addEventListener("click", () => setPage("queue_history"));
       document.getElementById("supervisorForm").addEventListener("submit", async (event) => {
         try { await updateSupervisor(event); } catch (err) { alert(err.message); }
       });
@@ -576,6 +680,7 @@ HTML_PAGE = """<!doctype html>
     }
 
     wireEvents();
+    setPage("operations");
     refresh().catch(err => alert(err.message));
   </script>
 </body>

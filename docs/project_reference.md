@@ -87,6 +87,7 @@ All non-2xx error handling is JSON:
 Defined in `yard/models.py`.
 
 - `Truck`: per-truck lifecycle state (`remaining_load_units`, dock assignment, timestamps).
+  - includes `departure_minute` and derived `total_time_in_system_minutes`.
 - `StagingAreaState`: per-dock staging occupancy/capacity + hysteresis flags.
   - includes `load_family` metadata used for load-type-exclusive clearing when no active truck object is attached.
 - `DockState`: dock activity, assigned resources, current truck, phase logic.
@@ -249,6 +250,8 @@ Returned by `get_dashboard_payload()` / `/api/state`:
 - `dock_status`
 - `resource_summary`
 - `verification`
+- `queue_table` (current waiting queue rows)
+- `gate_history` (completed trucks with arrival/departure/wait-time rows)
 - `trends`
 
 ## 8.3 Verification Cards

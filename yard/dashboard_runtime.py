@@ -246,6 +246,8 @@ class DashboardRuntime:
             for event in trigger_source_events
         ]
         trend_points = self.trend_history[-self.history_window_minutes :]
+        queue_rows = self._serialize_waiting_queue()
+        gate_history_rows = self._serialize_gate_history()
 
         decision_status = self.recommendation_decision
         is_applied = self.recommendation_applied
@@ -282,6 +284,8 @@ class DashboardRuntime:
             "dock_status": dock_rows,
             "resource_summary": snapshot.resource_summary,
             "verification": self._build_verification_cards(snapshot=snapshot, trend_points=trend_points),
+            "queue_table": queue_rows,
+            "gate_history": gate_history_rows,
             "trends": {
                 "minutes": [point.minute for point in trend_points],
                 "queue_length": [point.queue_length for point in trend_points],
@@ -289,6 +293,35 @@ class DashboardRuntime:
                 "max_staging_occupancy_pct": [point.max_staging_occupancy_pct for point in trend_points],
             },
         }
+
+    def _serialize_waiting_queue(self) -> list[dict[str, Any]]:
+        return [
+            {
+                "truck_id": truck.truck_id,
+                "truck_type": truck.truck_type,
+                "load_units": round(float(truck.initial_load_units), 2),
+                "gate_arrival": int(truck.gate_arrival_minute),
+            }
+            for truck in self.state.waiting_queue
+        ]
+
+    def _serialize_gate_history(self) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        for truck in self.state.completed_trucks:
+            total_time = truck.total_time_in_system_minutes
+            rows.append(
+                {
+                    "truck_id": truck.truck_id,
+                    "truck_type": truck.truck_type,
+                    "load_units": round(float(truck.initial_load_units), 2),
+                    "gate_arrival": int(truck.gate_arrival_minute),
+                    "departure_minute": (
+                        int(truck.departure_minute) if truck.departure_minute is not None else None
+                    ),
+                    "waiting_time_minutes": int(total_time) if total_time is not None else None,
+                }
+            )
+        return rows
 
     def _record_trend(self, arrivals: int) -> None:
         active_docks = [dock for dock in self.state.docks.values() if dock.active]

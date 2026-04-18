@@ -30,6 +30,8 @@ def test_dashboard_payload_contains_required_sections() -> None:
     assert "dock_status" in payload
     assert "resource_summary" in payload
     assert "verification" in payload
+    assert "queue_table" in payload
+    assert "gate_history" in payload
     assert "trends" in payload
     assert payload["supervisor_inputs"]["available_workers"] == 6
 

@@ -129,7 +129,13 @@ def compute_clear_rate(dock: DockState, config: YardConfig) -> float:
     return 0.0
 
 
-def update_busy_dock_one_step(dock: DockState, config: YardConfig) -> bool:
+def update_busy_dock_one_step(
+    dock: DockState,
+    config: YardConfig,
+    *,
+    minute: int | None = None,
+    completed_trucks_sink: list[Truck] | None = None,
+) -> bool:
     """
     Apply one simulation step for a dock.
 
@@ -168,6 +174,10 @@ def update_busy_dock_one_step(dock: DockState, config: YardConfig) -> bool:
 
     if truck.remaining_load_units <= EPSILON and dock.staging.occupancy_units <= EPSILON:
         truck.remaining_load_units = 0.0
+        if minute is not None:
+            truck.departure_minute = minute
+        if completed_trucks_sink is not None:
+            completed_trucks_sink.append(copy.deepcopy(truck))
         dock.staging.occupancy_units = 0.0
         dock.staging.load_family = None
         dock.current_truck = None
@@ -300,7 +310,12 @@ def simulate_one_minute(state: YardState, config: YardConfig, rng: random.Random
     triggers: list[TriggerEvent] = []
 
     for dock in state.docks.values():
-        was_freed = update_busy_dock_one_step(dock, config)
+        was_freed = update_busy_dock_one_step(
+            dock,
+            config,
+            minute=minute,
+            completed_trucks_sink=state.completed_trucks,
+        )
         if was_freed:
             triggers.append(
                 TriggerEvent(

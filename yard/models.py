@@ -31,12 +31,15 @@ class Truck:
     gate_arrival_minute: int
     assigned_dock_id: Optional[int] = None
     unload_start_minute: Optional[int] = None
+    departure_minute: Optional[int] = None
 
     def __post_init__(self) -> None:
         if self.initial_load_units < 0.0:
             raise ValueError("initial_load_units must be non-negative")
         if self.remaining_load_units < 0.0:
             raise ValueError("remaining_load_units must be non-negative")
+        if self.departure_minute is not None and self.departure_minute < self.gate_arrival_minute:
+            raise ValueError("departure_minute cannot be earlier than gate_arrival_minute")
 
     @property
     def is_floor_loaded(self) -> bool:
@@ -45,6 +48,12 @@ class Truck:
     @property
     def load_family(self) -> LoadFamily:
         return "floor" if self.is_floor_loaded else "palletized"
+
+    @property
+    def total_time_in_system_minutes(self) -> Optional[int]:
+        if self.departure_minute is None:
+            return None
+        return max(self.departure_minute - self.gate_arrival_minute, 0)
 
 
 @dataclass
