@@ -75,6 +75,8 @@ def seed_yard_state(
     runtime.last_trigger_batch = []
     runtime.recommendation_applied = False
     runtime.recommendation_decision = "none"
+    runtime.arrivals_total = 0
+    runtime.arrivals_last_step = 0
 
     row_by_dock = {int(row["dock_id"]): row for row in dock_rows}
     for dock_id, dock in state.docks.items():
@@ -158,6 +160,14 @@ def seed_yard_state(
                 max((100.0 * dock.staging.occupancy_ratio for dock in state.docks.values() if dock.active), default=0.0),
                 1,
             ),
+            dock_utilization_pct=round(
+                100.0
+                * (
+                    sum(1 for dock in state.docks.values() if dock.active and dock.current_truck is not None)
+                    / max(sum(1 for dock in state.docks.values() if dock.active), 1)
+                ),
+                1,
+            ),
         )
     ]
 
@@ -182,6 +192,7 @@ def assert_dashboard_matches_backend(runtime: DashboardRuntime, payload: dict[st
 
     for required in (
         "minute",
+        "live_operations",
         "supervisor_inputs",
         "kpis",
         "recommendation",
@@ -196,6 +207,20 @@ def assert_dashboard_matches_backend(runtime: DashboardRuntime, payload: dict[st
         assert required in payload
 
     assert payload["minute"] == state.now_minute
+    live_ops = payload["live_operations"]
+    assert live_ops["current_minute"] == state.now_minute
+    expected_hours = state.now_minute // 60
+    expected_minutes = state.now_minute % 60
+    assert live_ops["simulation_timer"] == f"{expected_hours:02d}:{expected_minutes:02d}"
+    assert live_ops["queue_length"] == state.queue_length
+    expected_active_trucks = sum(
+        1 for dock in state.docks.values() if dock.active and dock.current_truck is not None
+    )
+    assert live_ops["active_trucks_count"] == expected_active_trucks
+    assert live_ops["completed_trucks_count"] == len(state.completed_trucks)
+    assert live_ops["arrivals_last_step"] >= 0
+    assert live_ops["arrivals_total"] >= live_ops["arrivals_last_step"]
+
     supervisor = payload["supervisor_inputs"]
     assert supervisor["active_docks"] == sum(1 for dock in state.docks.values() if dock.active)
     assert supervisor["available_workers"] == state.resources.total_workers
@@ -252,6 +277,8 @@ def assert_dashboard_matches_backend(runtime: DashboardRuntime, payload: dict[st
         assert rec_payload["rationale"] == rec_state.rationale
         assert rec_payload["is_applied"] is runtime.recommendation_applied
         assert rec_payload["decision_status"] == runtime.recommendation_decision
+        assert rec_payload["selected_action_name"] == rec_state.selected_action.action_name
+        assert rec_payload["hold_gate_release"] == rec_state.selected_action.hold_gate_release
     assert rec_payload["minute_generated"] == runtime.last_recommendation_minute
 
     trigger_source_events = runtime.recommendation_trigger_batch if rec_state is not None else []
@@ -260,6 +287,22 @@ def assert_dashboard_matches_backend(runtime: DashboardRuntime, payload: dict[st
         for event in trigger_source_events
     ]
     assert rec_payload["trigger_source"] == expected_sources
+    if rec_state is None:
+        assert rec_payload["selected_action_name"] is None
+        assert rec_payload["latest_trigger_type"] is None
+        assert rec_payload["latest_trigger_reason"] is None
+        assert rec_payload["assignment_by_dock"] == []
+        assert rec_payload["top_candidates"] == []
+    else:
+        assert isinstance(rec_payload["assignment_by_dock"], list)
+        assert isinstance(rec_payload["top_candidates"], list)
+        assert len(rec_payload["top_candidates"]) <= 3
+        if trigger_source_events:
+            assert rec_payload["latest_trigger_type"] == trigger_source_events[-1].trigger_type
+            assert rec_payload["latest_trigger_reason"] == trigger_source_events[-1].reason
+
+    assert "throughput_trucks_per_hour" in payload["kpis"]
+    assert payload["kpis"]["throughput_trucks_per_hour"] >= 0.0
 
     verification = payload["verification"]
     assert "spec_3" in verification
@@ -275,6 +318,7 @@ def assert_dashboard_matches_backend(runtime: DashboardRuntime, payload: dict[st
     length = len(trends["minutes"])
     assert length >= 1
     assert length == len(trends["queue_length"]) == len(trends["arrivals"]) == len(trends["max_staging_occupancy_pct"])
+    assert length == len(trends["dock_utilization_pct"])
     assert trends["minutes"][-1] == state.now_minute
 
     queue_table = payload["queue_table"]

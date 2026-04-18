@@ -63,10 +63,16 @@ pytest -q
   - staging threshold crossed
   - review timer reached
 - Dashboard supports:
-  - supervisor input updates,
-  - manual step/run controls,
-  - recommendation apply / keep-current-plan decisions,
-  - queue view (current waiting trucks),
-  - gate history view (completed trucks with arrival/departure/waiting time),
-  - staging/dock/resource/KPI views,
-  - basic trend charts.
+  - Operations page with exactly 5 sections:
+    - Live Operations
+    - Dock & Staging
+    - Resource Panel
+    - Recommendation Panel
+    - Analytics
+  - separate Queue & Gate History page tab,
+  - supervisor input updates and manual step/run controls,
+  - 2-second auto-refresh polling of live state,
+  - recommendation accept/reject workflow,
+  - dark/light theme toggle with dark default and persisted preference,
+  - queue and gate-history tables (arrival/departure/total time in system),
+  - queue/staging/utilization trend charts and ISE-style verification cards.

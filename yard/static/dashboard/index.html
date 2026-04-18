@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Smart Yard Dashboard V2</title>
+  <link rel="stylesheet" href="/static/dashboard/app.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="header-row">
+      <div class="brand-block">
+        <h1>Smart Yard Optimization Dashboard</h1>
+        <p class="subhead">Event-driven yard operations, recommendations, and validation analytics.</p>
+      </div>
+      <div class="header-controls">
+        <div id="minuteClock" class="clock-pill">00:00</div>
+        <button id="themeToggle" type="button" class="theme-toggle">Light Theme</button>
+      </div>
+    </div>
+    <nav class="nav-tabs" aria-label="Dashboard Pages">
+      <button type="button" id="navOperations" class="active">Operations</button>
+      <button type="button" id="navQueueHistory">Queue &amp; Gate History</button>
+    </nav>
+  </header>
+
+  <main id="operationsPage" class="dashboard-page">
+    <section class="panel" id="liveOperationsSection">
+      <div class="section-head">
+        <h2>Live Operations</h2>
+        <p>Live state snapshot with supervisor controls and simulation stepping.</p>
+      </div>
+      <div id="liveMetricsGrid" class="metric-grid"></div>
+      <div class="live-controls-grid">
+        <form id="supervisorForm" class="control-card" autocomplete="off">
+          <h3>Supervisor Inputs</h3>
+          <label for="available_workers">Available Workers</label>
+          <input id="available_workers" type="number" min="0" />
+          <label for="available_forklifts">Available Forklifts</label>
+          <input id="available_forklifts" type="number" min="0" />
+          <label for="active_docks">Active Docks</label>
+          <input id="active_docks" type="number" min="1" />
+          <label for="max_unloaders_per_dock">Max Unloaders / Dock</label>
+          <input id="max_unloaders_per_dock" type="number" min="1" />
+          <div class="button-row">
+            <button type="submit" class="btn btn-primary">Update Inputs</button>
+            <button id="refreshBtn" type="button" class="btn btn-secondary">Refresh State</button>
+          </div>
+        </form>
+        <div class="control-card">
+          <h3>Simulation Controls</h3>
+          <p class="muted">State auto-refreshes every 2 seconds. Use manual stepping to advance simulation time.</p>
+          <div class="button-row">
+            <button id="stepBtn" type="button" class="btn btn-primary">Step +1 Min</button>
+            <button id="run15Btn" type="button" class="btn btn-warning">Run +15 Min</button>
+          </div>
+          <div id="pollingStatus" class="status-note">Auto-refresh active</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="dockStagingSection">
+      <div class="section-head">
+        <h2>Dock &amp; Staging</h2>
+        <p>Per-dock operational status, truck context, and staging occupancy progression.</p>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Dock ID</th>
+              <th>Dock Status</th>
+              <th>Dock Phase</th>
+              <th>Current Truck ID</th>
+              <th>Current Truck Type</th>
+              <th>Remaining Load Units</th>
+              <th>Staging Occupancy</th>
+              <th>Staging Ratio</th>
+              <th>Assigned Workers</th>
+              <th>Assigned Forklifts</th>
+            </tr>
+          </thead>
+          <tbody id="dockStagingTableBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel" id="resourcePanelSection">
+      <div class="section-head">
+        <h2>Resource Panel</h2>
+        <p>Resource availability and utilization context for decision support.</p>
+      </div>
+      <div id="resourceSummaryGrid" class="metric-grid"></div>
+    </section>
+
+    <section class="panel recommendation-panel" id="recommendationPanelSection">
+      <div class="section-head">
+        <h2>Recommendation Panel</h2>
+        <p>Trigger-driven recommendation details and supervisor decision actions.</p>
+      </div>
+      <div id="recommendationHeadline" class="rec-main">No active recommendation.</div>
+      <div id="recommendationRationale" class="muted">Waiting for next trigger.</div>
+      <div id="recommendationMeta" class="chip-row"></div>
+      <div class="button-row">
+        <button id="applyRecBtn" type="button" class="btn btn-success">Accept Recommendation</button>
+        <button id="keepPlanBtn" type="button" class="btn btn-secondary">Reject / Keep Current Plan</button>
+      </div>
+      <div class="split-grid">
+        <div>
+          <h3>Resource Assignment by Dock</h3>
+          <div class="table-wrap compact">
+            <table>
+              <thead>
+                <tr>
+                  <th>Dock</th>
+                  <th>Workers</th>
+                  <th>Forklifts</th>
+                </tr>
+              </thead>
+              <tbody id="recommendationAssignmentBody"></tbody>
+            </table>
+          </div>
+        </div>
+        <div>
+          <h3>Top Candidate Scores</h3>
+          <div class="table-wrap compact">
+            <table>
+              <thead>
+                <tr>
+                  <th>Candidate</th>
+                  <th>Score</th>
+                </tr>
+              </thead>
+              <tbody id="recommendationCandidateBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="analyticsSection">
+      <div class="section-head">
+        <h2>Analytics</h2>
+        <p>Predicted KPIs, trend visibility, throughput, and ISE validation cards.</p>
+      </div>
+      <div id="analyticsKpiCards" class="metric-grid"></div>
+      <div class="chart-grid">
+        <div class="chart-card">
+          <h3>Queue Trend</h3>
+          <svg id="queueTrendChart" viewBox="0 0 320 120" preserveAspectRatio="none"></svg>
+        </div>
+        <div class="chart-card">
+          <h3>Staging Occupancy Trend</h3>
+          <svg id="stagingTrendChart" viewBox="0 0 320 120" preserveAspectRatio="none"></svg>
+        </div>
+        <div class="chart-card">
+          <h3>Dock Utilization Trend</h3>
+          <svg id="utilizationTrendChart" viewBox="0 0 320 120" preserveAspectRatio="none"></svg>
+        </div>
+      </div>
+      <div id="verificationCards" class="verification-grid"></div>
+    </section>
+  </main>
+
+  <main id="queueHistoryPage" class="dashboard-page page-hidden">
+    <section class="panel" id="queueSection">
+      <div class="section-head">
+        <h2>Current Waiting Queue</h2>
+        <p>Active trucks waiting for gate release and dock assignment.</p>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Truck ID</th>
+              <th>Truck Type</th>
+              <th>Load Units</th>
+              <th>Gate Arrival</th>
+            </tr>
+          </thead>
+          <tbody id="queueTableBody"></tbody>
+        </table>
+      </div>
+      <p id="queueEmptyNote" class="muted"></p>
+    </section>
+
+    <section class="panel" id="gateHistorySection">
+      <div class="section-head">
+        <h2>Gate History</h2>
+        <p>Completed trucks with arrival/departure and total time in system.</p>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Truck ID</th>
+              <th>Truck Type</th>
+              <th>Load Units</th>
+              <th>Gate Arrival</th>
+              <th>Departure</th>
+              <th>Total Time (min)</th>
+            </tr>
+          </thead>
+          <tbody id="gateHistoryTableBody"></tbody>
+        </table>
+      </div>
+      <p id="gateHistoryEmptyNote" class="muted"></p>
+    </section>
+  </main>
+
+  <script type="module" src="/static/dashboard/main.js"></script>
+</body>
+</html>

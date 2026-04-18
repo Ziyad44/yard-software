@@ -33,6 +33,7 @@ class TrendPoint:
     queue_length: int
     arrivals: int
     max_staging_occupancy_pct: float
+    dock_utilization_pct: float
 
 
 @dataclass
@@ -50,6 +51,8 @@ class DashboardRuntime:
     last_recommendation_minute: int | None = None
     recommendation_applied: bool = False
     recommendation_decision: str = "none"
+    arrivals_total: int = 0
+    arrivals_last_step: int = 0
 
     def __post_init__(self) -> None:
         self.rng = random.Random(self.rng_seed)
@@ -126,6 +129,8 @@ class DashboardRuntime:
             triggers, recommendation = run_minute_cycle(self.state, self.config, rng=self.rng)
             self._enforce_idle_dock_zero_assignments()
             arrivals = max(self.state.next_truck_sequence - seq_before, 0)
+            self.arrivals_last_step = arrivals
+            self.arrivals_total += arrivals
             self._record_trend(arrivals=arrivals)
 
             self.last_trigger_batch = triggers
@@ -227,9 +232,11 @@ class DashboardRuntime:
                     "phase": dock_summary.phase,
                     "truck_id": dock_summary.current_truck_id,
                     "truck_type": dock_summary.current_truck_type,
+                    "remaining_load_units": round(dock_summary.remaining_load_units, 1),
                     "assigned_workers": dock_summary.assigned_workers,
                     "assigned_forklifts": dock_summary.assigned_forklifts,
                     "staging_occupancy_units": round(dock_summary.staging_occupancy_units, 1),
+                    "staging_capacity_units": round(dock_summary.staging_capacity_units, 1),
                     "staging_occupancy_pct": round(occupancy_pct, 1),
                     "eta_text": eta_text,
                 }
@@ -248,6 +255,13 @@ class DashboardRuntime:
         trend_points = self.trend_history[-self.history_window_minutes :]
         queue_rows = self._serialize_waiting_queue()
         gate_history_rows = self._serialize_gate_history()
+        active_trucks = sum(
+            1
+            for dock in self.state.docks.values()
+            if dock.active and dock.current_truck is not None
+        )
+        latest_trigger = trigger_source_events[-1] if trigger_source_events else None
+        top_candidates = self._top_candidate_rows(self.state.last_recommendation)
 
         decision_status = self.recommendation_decision
         is_applied = self.recommendation_applied
@@ -257,6 +271,15 @@ class DashboardRuntime:
 
         return {
             "minute": self.state.now_minute,
+            "live_operations": {
+                "simulation_timer": self._format_simulation_timer(self.state.now_minute),
+                "current_minute": self.state.now_minute,
+                "queue_length": snapshot.queue_length,
+                "active_trucks_count": active_trucks,
+                "completed_trucks_count": len(self.state.completed_trucks),
+                "arrivals_last_step": self.arrivals_last_step,
+                "arrivals_total": self.arrivals_total,
+            },
             "supervisor_inputs": {
                 "available_workers": self.state.resources.total_workers,
                 "available_forklifts": self.state.resources.total_forklifts,
@@ -271,6 +294,7 @@ class DashboardRuntime:
                 ),
                 "dock_utilization": round(100.0 * float(snapshot.predicted_dock_utilization or 0.0), 1),
                 "staging_risk_pct": round(100.0 * float(snapshot.predicted_staging_overflow_risk or 0.0), 1),
+                "throughput_trucks_per_hour": round(self._compute_throughput_trucks_per_hour(), 2),
                 "recommended_action": recommendation_obj["text"],
             },
             "recommendation": {
@@ -279,6 +303,20 @@ class DashboardRuntime:
                 "is_applied": is_applied,
                 "decision_status": decision_status,
                 "minute_generated": self.last_recommendation_minute,
+                "selected_action_name": (
+                    self.state.last_recommendation.selected_action.action_name
+                    if self.state.last_recommendation is not None
+                    else None
+                ),
+                "latest_trigger_type": latest_trigger.trigger_type if latest_trigger is not None else None,
+                "latest_trigger_reason": latest_trigger.reason if latest_trigger is not None else None,
+                "hold_gate_release": (
+                    bool(self.state.last_recommendation.selected_action.hold_gate_release)
+                    if self.state.last_recommendation is not None
+                    else bool(self.state.hold_gate_release)
+                ),
+                "assignment_by_dock": self._recommended_assignment_by_dock(self.state.last_recommendation),
+                "top_candidates": top_candidates,
             },
             "staging_status": staging_cards,
             "dock_status": dock_rows,
@@ -291,6 +329,7 @@ class DashboardRuntime:
                 "queue_length": [point.queue_length for point in trend_points],
                 "arrivals": [point.arrivals for point in trend_points],
                 "max_staging_occupancy_pct": [point.max_staging_occupancy_pct for point in trend_points],
+                "dock_utilization_pct": [point.dock_utilization_pct for point in trend_points],
             },
         }
 
@@ -326,8 +365,11 @@ class DashboardRuntime:
     def _record_trend(self, arrivals: int) -> None:
         active_docks = [dock for dock in self.state.docks.values() if dock.active]
         max_staging_pct = 0.0
+        dock_utilization_pct = 0.0
         if active_docks:
             max_staging_pct = max(100.0 * dock.staging.occupancy_ratio for dock in active_docks)
+            busy_active = sum(1 for dock in active_docks if dock.phase != "idle")
+            dock_utilization_pct = 100.0 * busy_active / len(active_docks)
 
         self.trend_history.append(
             TrendPoint(
@@ -335,10 +377,53 @@ class DashboardRuntime:
                 queue_length=self.state.queue_length,
                 arrivals=arrivals,
                 max_staging_occupancy_pct=round(max_staging_pct, 1),
+                dock_utilization_pct=round(dock_utilization_pct, 1),
             )
         )
         if len(self.trend_history) > self.history_window_minutes * 2:
             self.trend_history = self.trend_history[-self.history_window_minutes :]
+
+    def _compute_throughput_trucks_per_hour(self) -> float:
+        now = self.state.now_minute
+        effective_window = max(min(60, now + 1), 1)
+        window_start = now - effective_window + 1
+        departures = sum(
+            1
+            for truck in self.state.completed_trucks
+            if truck.departure_minute is not None and window_start <= truck.departure_minute <= now
+        )
+        return departures * (60.0 / effective_window)
+
+    @staticmethod
+    def _format_simulation_timer(minute: int) -> str:
+        hours = minute // 60
+        mins = minute % 60
+        return f"{hours:02d}:{mins:02d}"
+
+    @staticmethod
+    def _top_candidate_rows(recommendation: Recommendation | None) -> list[dict[str, Any]]:
+        if recommendation is None:
+            return []
+        sorted_candidates = sorted(recommendation.candidate_scores.items(), key=lambda item: item[1])[:3]
+        return [
+            {"action_name": action_name, "score": round(float(score), 3)}
+            for action_name, score in sorted_candidates
+        ]
+
+    @staticmethod
+    def _recommended_assignment_by_dock(recommendation: Recommendation | None) -> list[dict[str, int]]:
+        if recommendation is None:
+            return []
+        action = recommendation.selected_action
+        dock_ids = sorted(set(action.workers_by_dock) | set(action.forklifts_by_dock))
+        return [
+            {
+                "dock_id": dock_id,
+                "workers": int(action.workers_by_dock.get(dock_id, 0)),
+                "forklifts": int(action.forklifts_by_dock.get(dock_id, 0)),
+            }
+            for dock_id in dock_ids
+        ]
 
     def _sync_new_dock_defaults(self) -> None:
         for dock in self.state.docks.values():

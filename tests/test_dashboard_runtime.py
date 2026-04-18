@@ -24,6 +24,7 @@ def test_dashboard_payload_contains_required_sections() -> None:
     runtime = _runtime()
     payload = runtime.get_dashboard_payload()
 
+    assert "live_operations" in payload
     assert "kpis" in payload
     assert "recommendation" in payload
     assert "staging_status" in payload

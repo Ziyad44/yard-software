@@ -38,12 +38,15 @@ def test_dashboard_api_contract_state_and_lifecycle() -> None:
 
         initial = _get_json(base_url, "/api/state")
         assert "kpis" in initial
+        assert "live_operations" in initial
         assert "dock_status" in initial
         assert "trends" in initial
         assert "queue_table" in initial
         assert "gate_history" in initial
         assert "spec_3" in initial["verification"]
         assert "spec_4" in initial["verification"]
+        assert "throughput_trucks_per_hour" in initial["kpis"]
+        assert "dock_utilization_pct" in initial["trends"]
         if initial["recommendation"]["minute_generated"] is None:
             assert initial["recommendation"]["text"] == "No active recommendation."
             assert initial["recommendation"]["rationale"] == "Waiting for next trigger."
