@@ -17,7 +17,7 @@ from .models import (
     YardState,
 )
 from .recommendation import recommend_best_action
-from .simulation import simulate_horizon, simulate_one_minute
+from .simulation import sanitize_assignment_for_dock, simulate_horizon, simulate_one_minute
 
 
 def initialize_state(
@@ -114,17 +114,20 @@ def apply_action(state: YardState, action: Action, config: YardConfig) -> None:
     """Apply a recommendation payload to live dock assignments."""
     worker_total = 0
     forklift_total = 0
+    normalized_workers_by_dock: dict[int, int] = {}
+    normalized_forklifts_by_dock: dict[int, int] = {}
 
     for dock_id, dock in state.docks.items():
         if not dock.active:
             continue
-        workers = max(int(action.workers_by_dock.get(dock_id, 0)), 0)
-        forklifts = max(int(action.forklifts_by_dock.get(dock_id, 0)), 0)
-        if workers > config.max_unloaders_per_dock:
-            raise ValueError(
-                f"Dock {dock_id} worker assignment {workers} exceeds "
-                f"max_unloaders_per_dock={config.max_unloaders_per_dock}."
-            )
+        workers, forklifts = sanitize_assignment_for_dock(
+            dock=dock,
+            workers=int(action.workers_by_dock.get(dock_id, 0)),
+            forklifts=int(action.forklifts_by_dock.get(dock_id, 0)),
+            max_unloaders_per_dock=config.max_unloaders_per_dock,
+        )
+        normalized_workers_by_dock[dock_id] = workers
+        normalized_forklifts_by_dock[dock_id] = forklifts
         worker_total += workers
         forklift_total += forklifts
 
@@ -138,11 +141,17 @@ def apply_action(state: YardState, action: Action, config: YardConfig) -> None:
             dock.assigned_workers = 0
             dock.assigned_forklifts = 0
             continue
-        dock.assigned_workers = max(int(action.workers_by_dock.get(dock_id, 0)), 0)
-        dock.assigned_forklifts = max(int(action.forklifts_by_dock.get(dock_id, 0)), 0)
+        dock.assigned_workers = normalized_workers_by_dock.get(dock_id, 0)
+        dock.assigned_forklifts = normalized_forklifts_by_dock.get(dock_id, 0)
 
     state.hold_gate_release = bool(action.hold_gate_release)
-    state.active_action = action
+    state.active_action = Action(
+        action_name=action.action_name,
+        workers_by_dock=normalized_workers_by_dock,
+        forklifts_by_dock=normalized_forklifts_by_dock,
+        hold_gate_release=bool(action.hold_gate_release),
+        notes=action.notes,
+    )
     state.update_resource_assignment_counters()
 
 

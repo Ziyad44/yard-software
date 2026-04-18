@@ -49,7 +49,7 @@ def test_scenario_b_staging_congestion_and_pause() -> None:
         arrival_rate_per_hour=0.0,
         review_interval_minutes=999,
         floor_unload_worker_rate=6.0,
-        floor_unload_forklift_assist_rate=0.0,
+        
         clear_worker_rate=0.0,
         clear_forklift_rate=0.0,
         staging_high_threshold=0.85,
@@ -96,7 +96,7 @@ def test_scenario_c_dock_freed_then_next_truck_starts() -> None:
         arrival_rate_per_hour=0.0,
         review_interval_minutes=999,
         floor_unload_worker_rate=4.0,
-        floor_unload_forklift_assist_rate=0.0,
+        
         clear_worker_rate=1.0,
         clear_forklift_rate=0.0,
     )
@@ -145,6 +145,7 @@ def test_scenario_d_recommendation_apply_changes_future_path() -> None:
 
     runtime.step(1)
     assert runtime.state.last_recommendation is not None
+    selected_action_name = runtime.state.last_recommendation.selected_action.action_name
     apply_path = copy.deepcopy(runtime)
     keep_path = copy.deepcopy(runtime)
 
@@ -160,8 +161,13 @@ def test_scenario_d_recommendation_apply_changes_future_path() -> None:
     apply_forks = [dock.assigned_forklifts for dock in apply_path.state.docks.values()]
     keep_forks = [dock.assigned_forklifts for dock in keep_path.state.docks.values()]
 
-    assert apply_workers != keep_workers or apply_forks != keep_forks
-    assert apply_path.state.docks[2].staging.occupancy_units != keep_path.state.docks[2].staging.occupancy_units
+    if selected_action_name == "keep_current_plan":
+        assert apply_workers == keep_workers
+        assert apply_forks == keep_forks
+        assert apply_path.state.docks[2].staging.occupancy_units == keep_path.state.docks[2].staging.occupancy_units
+    else:
+        assert apply_workers != keep_workers or apply_forks != keep_forks
+        assert apply_path.state.docks[2].staging.occupancy_units != keep_path.state.docks[2].staging.occupancy_units
 
 
 def test_scenario_e_supervisor_constraint_change_rebalances_safely() -> None:

@@ -7,7 +7,7 @@ import math
 import random
 
 from .config import YardConfig
-from .models import EPSILON, DockState, SystemSnapshot, TriggerEvent, Truck, YardState
+from .models import EPSILON, DockState, LoadFamily, SystemSnapshot, TriggerEvent, Truck, YardState
 
 
 def _clamp(value: float, low: float, high: float) -> float:
@@ -65,28 +65,68 @@ def generate_arrivals_for_minute(state: YardState, config: YardConfig, rng: rand
     return arrivals
 
 
+def _infer_load_family_for_staging_without_truck(dock: DockState) -> LoadFamily | None:
+    """Best-effort fallback for seeded states that have staging load but no active truck object."""
+    if dock.staging.occupancy_units <= EPSILON:
+        return None
+    if dock.assigned_workers > 0 and dock.assigned_forklifts <= 0:
+        return "floor"
+    if dock.assigned_forklifts > 0 and dock.assigned_workers <= 0:
+        return "palletized"
+    # If staging has load but metadata is missing, default to floor handling.
+    # This keeps seeded/manual states operable while preserving exclusivity.
+    return "floor"
+
+
+def dock_load_family(dock: DockState) -> LoadFamily | None:
+    """Return the active load family currently being handled at a dock, if known."""
+    if dock.current_truck is not None:
+        return dock.current_truck.load_family
+    if dock.staging.load_family is not None and dock.staging.occupancy_units > EPSILON:
+        return dock.staging.load_family
+    return _infer_load_family_for_staging_without_truck(dock)
+
+
+def sanitize_assignment_for_dock(
+    *,
+    dock: DockState,
+    workers: int,
+    forklifts: int,
+    max_unloaders_per_dock: int,
+) -> tuple[int, int]:
+    """
+    Enforce version-1 exclusivity:
+    - floor load handling -> workers only
+    - palletized load handling -> forklifts only
+    """
+    workers_nonneg = max(int(workers), 0)
+    forklifts_nonneg = max(int(forklifts), 0)
+    family = dock_load_family(dock)
+
+    if family == "floor":
+        return min(workers_nonneg, max(max_unloaders_per_dock, 0)), 0
+    if family == "palletized":
+        return 0, forklifts_nonneg
+    return 0, 0
+
+
 def compute_unload_rate(truck: Truck, dock: DockState, config: YardConfig) -> float:
-    """Compute unload inflow capacity based on truck type and assigned resources."""
+    """Compute unload inflow capacity with load-type-exclusive resources."""
     if truck.is_floor_loaded:
-        rate = (
-            config.floor_unload_worker_rate * max(dock.assigned_workers, 0)
-            + config.floor_unload_forklift_assist_rate * max(dock.assigned_forklifts, 0)
-        )
+        rate = config.floor_unload_worker_rate * max(dock.assigned_workers, 0)
     else:
-        rate = (
-            config.pallet_unload_forklift_rate * max(dock.assigned_forklifts, 0)
-            + config.pallet_unload_worker_assist_rate * max(dock.assigned_workers, 0)
-        )
+        rate = config.pallet_unload_forklift_rate * max(dock.assigned_forklifts, 0)
     return max(rate, 0.0)
 
 
 def compute_clear_rate(dock: DockState, config: YardConfig) -> float:
-    """Compute staging outflow capacity from the dock's remove/clearing zone."""
-    return max(
-        config.clear_worker_rate * max(dock.assigned_workers, 0)
-        + config.clear_forklift_rate * max(dock.assigned_forklifts, 0),
-        0.0,
-    )
+    """Compute staging outflow capacity using only the resource valid for the current load family."""
+    family = dock_load_family(dock)
+    if family == "floor":
+        return max(config.clear_worker_rate * max(dock.assigned_workers, 0), 0.0)
+    if family == "palletized":
+        return max(config.clear_forklift_rate * max(dock.assigned_forklifts, 0), 0.0)
+    return 0.0
 
 
 def update_busy_dock_one_step(dock: DockState, config: YardConfig) -> bool:
@@ -107,9 +147,13 @@ def update_busy_dock_one_step(dock: DockState, config: YardConfig) -> bool:
     if dock.current_truck is None:
         if dock.staging.occupancy_units > EPSILON:
             dock.staging.occupancy_units = max(dock.staging.occupancy_units - clear_rate * dt, 0.0)
+            if dock.staging.occupancy_units <= EPSILON:
+                dock.staging.occupancy_units = 0.0
+                dock.staging.load_family = None
         return False
 
     truck = dock.current_truck
+    dock.staging.load_family = truck.load_family
     unload_rate = compute_unload_rate(truck, dock, config)
     headroom = max(dock.staging.capacity_units - dock.staging.occupancy_units, 0.0)
     inflow = min(unload_rate * dt, truck.remaining_load_units, headroom)
@@ -125,6 +169,7 @@ def update_busy_dock_one_step(dock: DockState, config: YardConfig) -> bool:
     if truck.remaining_load_units <= EPSILON and dock.staging.occupancy_units <= EPSILON:
         truck.remaining_load_units = 0.0
         dock.staging.occupancy_units = 0.0
+        dock.staging.load_family = None
         dock.current_truck = None
         return True
 
@@ -141,7 +186,8 @@ def _allocate_minimum_resources_for_new_truck(
 
     Version-1 rule:
     idle docks carry zero assignments, so when they receive a truck we
-    allocate a minimal feasible resource mix from currently idle global resources.
+    allocate the single resource type required by the truck load family
+    from currently idle global resources.
     """
     truck = dock.current_truck
     if truck is None:
@@ -149,35 +195,38 @@ def _allocate_minimum_resources_for_new_truck(
     if config is None:
         return False
 
-    updated = False
+    before_workers = dock.assigned_workers
+    before_forklifts = dock.assigned_forklifts
     max_workers = max(config.max_unloaders_per_dock, 0)
 
-    if compute_unload_rate(truck, dock, config) > EPSILON:
-        return False
-
-    # Prefer worker first for floor-loaded, forklift first for palletized.
     if truck.is_floor_loaded:
-        allocation_order = ("worker", "forklift")
-    else:
-        allocation_order = ("forklift", "worker")
-
-    for resource in allocation_order:
-        if resource == "worker":
-            if (
-                state.resources.idle_workers > 0
-                and dock.assigned_workers < max_workers
-            ):
-                dock.assigned_workers += 1
-                updated = True
-        else:
-            if state.resources.idle_forklifts > 0:
-                dock.assigned_forklifts += 1
-                updated = True
-
+        dock.assigned_forklifts = 0
         if compute_unload_rate(truck, dock, config) > EPSILON:
-            break
+            return (
+                dock.assigned_workers != before_workers
+                or dock.assigned_forklifts != before_forklifts
+            )
+        if state.resources.idle_workers <= 0 or dock.assigned_workers >= max_workers:
+            return (
+                dock.assigned_workers != before_workers
+                or dock.assigned_forklifts != before_forklifts
+            )
+        dock.assigned_workers += 1
+        return True
 
-    return updated
+    dock.assigned_workers = 0
+    if compute_unload_rate(truck, dock, config) > EPSILON:
+        return (
+            dock.assigned_workers != before_workers
+            or dock.assigned_forklifts != before_forklifts
+        )
+    if state.resources.idle_forklifts <= 0:
+        return (
+            dock.assigned_workers != before_workers
+            or dock.assigned_forklifts != before_forklifts
+        )
+    dock.assigned_forklifts += 1
+    return True
 
 
 def dispatch_waiting_trucks(
@@ -200,6 +249,7 @@ def dispatch_waiting_trucks(
         truck.assigned_dock_id = dock_id
         truck.unload_start_minute = minute
         dock.current_truck = truck
+        dock.staging.load_family = truck.load_family
         if _allocate_minimum_resources_for_new_truck(state, dock, config):
             assignments_changed = True
             state.update_resource_assignment_counters()

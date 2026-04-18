@@ -72,14 +72,17 @@ Six explicit combinations:
 
 ### Resource influence
 Version 1 uses linear rates:
-- floor-loaded unloading depends mainly on workers,
-- palletized unloading depends mainly on forklifts,
-- staging clearing uses workers and forklifts.
+- floor-loaded unloading depends only on workers,
+- palletized unloading depends only on forklifts,
+- staging clearing also follows load-type exclusivity
+  - floor load clears with workers only,
+  - palletized load clears with forklifts only.
 
 Default rate form:
-- `floor_unload_rate = a_w * workers + a_f * forklifts`
-- `pallet_unload_rate = b_f * forklifts + b_w * workers`
-- `clear_rate = c_w * workers + c_f * forklifts`
+- `floor_unload_rate = a_w * workers`
+- `pallet_unload_rate = b_f * forklifts`
+- `floor_clear_rate = c_w * workers`
+- `pallet_clear_rate = c_f * forklifts`
 
 With coefficients configured in `config.py` so they remain easy to tune.
 
@@ -144,6 +147,7 @@ Version 1 uses lightweight dataclasses:
 - `StagingAreaState`
   - dock_id, occupancy_units, capacity_units (=100)
   - threshold_high, threshold_low, threshold_alert_active
+  - load_family (`floor` or `palletized`) for load-type-exclusive clearing
 - `DockState`
   - dock_id, active flag
   - current_truck (optional)

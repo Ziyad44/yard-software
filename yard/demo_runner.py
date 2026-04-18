@@ -54,9 +54,10 @@ def main() -> None:
     )
     # Seed an intentionally imbalanced plan so recommendation effects are visible.
     initial.workers_by_dock = {1: 3, 2: 0}
-    initial.forklifts_by_dock = {1: 1, 2: 0}
+    initial.forklifts_by_dock = {1: 0, 2: 0}
     apply_action(state, initial, config=config)
     state.docks[2].staging.occupancy_units = 92.0
+    state.docks[2].staging.load_family = "floor"
 
     rng = random.Random(42)
     auto_apply_recommendation = True

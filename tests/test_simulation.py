@@ -76,6 +76,75 @@ def test_arrivals_are_deterministic_with_fixed_seed() -> None:
     assert run(44) != run(45)
 
 
+def test_unload_rate_is_exclusive_by_load_type() -> None:
+    config = YardConfig()
+    floor_truck = Truck(
+        truck_id="T-FLOOR",
+        truck_type="medium_floor",
+        initial_load_units=50.0,
+        remaining_load_units=50.0,
+        gate_arrival_minute=0,
+    )
+    pallet_truck = Truck(
+        truck_id="T-PALLET",
+        truck_type="medium_palletized",
+        initial_load_units=40.0,
+        remaining_load_units=40.0,
+        gate_arrival_minute=0,
+    )
+    dock = DockState(
+        dock_id=1,
+        active=True,
+        assigned_workers=2,
+        assigned_forklifts=3,
+        staging=StagingAreaState(dock_id=1, occupancy_units=0.0, capacity_units=100.0),
+    )
+
+    assert compute_unload_rate(floor_truck, dock, config) == pytest.approx(
+        config.floor_unload_worker_rate * 2
+    )
+    assert compute_unload_rate(pallet_truck, dock, config) == pytest.approx(
+        config.pallet_unload_forklift_rate * 3
+    )
+
+
+def test_clear_rate_is_exclusive_by_load_type() -> None:
+    config = YardConfig(clear_worker_rate=1.1, clear_forklift_rate=2.4)
+    floor_truck = Truck(
+        truck_id="T-FLOOR-CLEAR",
+        truck_type="small_floor",
+        initial_load_units=30.0,
+        remaining_load_units=5.0,
+        gate_arrival_minute=0,
+    )
+    pallet_truck = Truck(
+        truck_id="T-PALLET-CLEAR",
+        truck_type="small_palletized",
+        initial_load_units=24.0,
+        remaining_load_units=5.0,
+        gate_arrival_minute=0,
+    )
+    floor_dock = DockState(
+        dock_id=1,
+        active=True,
+        current_truck=floor_truck,
+        assigned_workers=3,
+        assigned_forklifts=2,
+        staging=StagingAreaState(dock_id=1, occupancy_units=10.0, capacity_units=100.0),
+    )
+    pallet_dock = DockState(
+        dock_id=2,
+        active=True,
+        current_truck=pallet_truck,
+        assigned_workers=3,
+        assigned_forklifts=2,
+        staging=StagingAreaState(dock_id=2, occupancy_units=10.0, capacity_units=100.0),
+    )
+
+    assert compute_clear_rate(floor_dock, config) == pytest.approx(config.clear_worker_rate * 3)
+    assert compute_clear_rate(pallet_dock, config) == pytest.approx(config.clear_forklift_rate * 2)
+
+
 def test_flow_conservation_equations_hold() -> None:
     config = YardConfig()
     truck = Truck(

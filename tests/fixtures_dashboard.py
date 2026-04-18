@@ -15,6 +15,7 @@ from yard.dashboard_runtime import DashboardRuntime, TrendPoint
 from yard.dashboard_server import _build_handler
 from yard.engine import initialize_state, refresh_kpi_cache
 from yard.models import Action, Recommendation, TriggerType, Truck
+from yard.simulation import sanitize_assignment_for_dock
 
 
 DEFAULT_SUPERVISOR: dict[str, int] = {
@@ -86,6 +87,16 @@ def seed_yard_state(
         truck_type = row.get("truck_type")
         if truck_type is None:
             dock.current_truck = None
+            if dock.staging.occupancy_units <= 0.0:
+                dock.staging.load_family = None
+            elif "staging_load_family" in row:
+                dock.staging.load_family = row["staging_load_family"]
+            elif dock.assigned_workers > 0 and dock.assigned_forklifts <= 0:
+                dock.staging.load_family = "floor"
+            elif dock.assigned_forklifts > 0 and dock.assigned_workers <= 0:
+                dock.staging.load_family = "palletized"
+            else:
+                dock.staging.load_family = "floor"
         else:
             remaining = float(row["truck_remaining"])
             initial = float(row.get("truck_initial", max(remaining, 1.0)))
@@ -99,6 +110,16 @@ def seed_yard_state(
                 assigned_dock_id=dock_id,
                 unload_start_minute=state.now_minute,
             )
+            dock.staging.load_family = "floor" if truck_type.endswith("_floor") else "palletized"
+
+        normalized_workers, normalized_forklifts = sanitize_assignment_for_dock(
+            dock=dock,
+            workers=dock.assigned_workers,
+            forklifts=dock.assigned_forklifts,
+            max_unloaders_per_dock=runtime.config.max_unloaders_per_dock,
+        )
+        dock.assigned_workers = normalized_workers
+        dock.assigned_forklifts = normalized_forklifts
 
     for idx, row in enumerate(queue_rows, start=1):
         truck_type = row["truck_type"]

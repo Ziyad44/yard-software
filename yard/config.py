@@ -51,10 +51,14 @@ class YardConfig:
     arrival_rate_per_hour: float = 8.0
 
     # Rate coefficients (units / minute)
+    # Handling is load-type-exclusive:
+    # - floor-loaded trucks: workers only
+    # - palletized trucks: forklifts only
     floor_unload_worker_rate: float = 1.4
-    floor_unload_forklift_assist_rate: float = 0.2
     pallet_unload_forklift_rate: float = 2.2
-    pallet_unload_worker_assist_rate: float = 0.2
+    # Clearing is also load-type-exclusive:
+    # - floor load in staging clears via workers
+    # - palletized load in staging clears via forklifts
     clear_worker_rate: float = 0.8
     clear_forklift_rate: float = 1.2
 

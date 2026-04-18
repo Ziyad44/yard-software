@@ -17,6 +17,7 @@ TruckType = Literal[
     "large_palletized",
 ]
 TriggerType = Literal["dock_freed", "staging_threshold", "review_timer"]
+LoadFamily = Literal["floor", "palletized"]
 
 
 @dataclass
@@ -41,6 +42,10 @@ class Truck:
     def is_floor_loaded(self) -> bool:
         return self.truck_type.endswith("_floor")
 
+    @property
+    def load_family(self) -> LoadFamily:
+        return "floor" if self.is_floor_loaded else "palletized"
+
 
 @dataclass
 class StagingAreaState:
@@ -52,6 +57,7 @@ class StagingAreaState:
     threshold_high: float = 0.85
     threshold_low: float = 0.75
     threshold_alert_active: bool = False
+    load_family: Optional[LoadFamily] = None
 
     @property
     def occupancy_ratio(self) -> float:

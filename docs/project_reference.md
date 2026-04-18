@@ -88,6 +88,7 @@ Defined in `yard/models.py`.
 
 - `Truck`: per-truck lifecycle state (`remaining_load_units`, dock assignment, timestamps).
 - `StagingAreaState`: per-dock staging occupancy/capacity + hysteresis flags.
+  - includes `load_family` metadata used for load-type-exclusive clearing when no active truck object is attached.
 - `DockState`: dock activity, assigned resources, current truck, phase logic.
 - `ResourcePool`: total vs assigned resources with idle computed properties.
 - `TriggerEvent`: event that gates recommendation execution.
@@ -127,12 +128,13 @@ For each busy dock at each step:
 
 Unload-rate model:
 
-- Floor trucks: workers-dominant + forklift assist.
-- Palletized trucks: forklifts-dominant + worker assist.
+- Floor trucks: workers only.
+- Palletized trucks: forklifts only.
 
 Clear-rate model:
 
-- workers and forklifts both contribute.
+- Floor load in staging: workers only.
+- Palletized load in staging: forklifts only.
 
 ## 5.3 Strict Dock Release Rule
 
@@ -408,4 +410,3 @@ Safest extension order:
 - Demo run: `python -m yard.demo_runner`
 - Dashboard server: `python -m yard.dashboard_server` then open `http://127.0.0.1:8787`
 - Tests: `pytest -q`
-

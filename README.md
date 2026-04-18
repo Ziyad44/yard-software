@@ -55,6 +55,9 @@ pytest -q
 - Version 1 keeps a strict dock-release rule:
   - truck remaining load must be zero
   - staging occupancy must be zero
+- Truck/load handling is exclusive by load type:
+  - floor-loaded trucks use workers only (unload + clear)
+  - palletized trucks use forklifts only (unload + clear)
 - Re-evaluation is trigger-based only:
   - dock freed
   - staging threshold crossed

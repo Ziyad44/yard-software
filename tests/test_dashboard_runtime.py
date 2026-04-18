@@ -110,7 +110,7 @@ def test_idle_dock_returns_to_zero_assignments_after_becoming_idle() -> None:
         arrival_rate_per_hour=0.0,
         review_interval_minutes=999,
         floor_unload_worker_rate=4.0,
-        floor_unload_forklift_assist_rate=0.0,
+        
         clear_worker_rate=4.0,
         clear_forklift_rate=0.0,
     )

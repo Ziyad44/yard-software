@@ -20,7 +20,7 @@ from .engine import (
     update_supervisor_inputs,
 )
 from .models import Action, DockState, Recommendation, TriggerEvent, YardState
-from .simulation import compute_clear_rate, update_busy_dock_one_step
+from .simulation import compute_clear_rate, dock_load_family, sanitize_assignment_for_dock, update_busy_dock_one_step
 
 
 MAX_ETA_MINUTES = 12 * 60
@@ -90,15 +90,19 @@ class DashboardRuntime:
         target_docks = busy_dock_ids if busy_dock_ids else []
         workers_by_dock = {dock_id: 0 for dock_id in active_dock_ids}
         forklifts_by_dock = {dock_id: 0 for dock_id in active_dock_ids}
-        dock_count = len(target_docks)
+        floor_target_docks = [dock_id for dock_id in target_docks if dock_load_family(self.state.docks[dock_id]) == "floor"]
+        pallet_target_docks = [
+            dock_id for dock_id in target_docks if dock_load_family(self.state.docks[dock_id]) == "palletized"
+        ]
 
-        if dock_count > 0:
+        if floor_target_docks:
             for idx in range(self.state.resources.total_workers):
-                dock_id = target_docks[idx % dock_count]
+                dock_id = floor_target_docks[idx % len(floor_target_docks)]
                 if workers_by_dock[dock_id] < self.config.max_unloaders_per_dock:
                     workers_by_dock[dock_id] += 1
+        if pallet_target_docks:
             for idx in range(self.state.resources.total_forklifts):
-                dock_id = target_docks[idx % dock_count]
+                dock_id = pallet_target_docks[idx % len(pallet_target_docks)]
                 forklifts_by_dock[dock_id] += 1
 
         apply_action(
@@ -311,6 +315,10 @@ class DashboardRuntime:
             dock.staging.threshold_low = self.config.staging_low_threshold
             if dock.staging.occupancy_units > dock.staging.capacity_units:
                 dock.staging.occupancy_units = dock.staging.capacity_units
+            if dock.current_truck is not None:
+                dock.staging.load_family = dock.current_truck.load_family
+            elif dock.staging.occupancy_units <= 0.0:
+                dock.staging.load_family = None
             if not dock.active:
                 dock.assigned_workers = 0
                 dock.assigned_forklifts = 0
@@ -322,8 +330,14 @@ class DashboardRuntime:
                 dock.assigned_workers = 0
                 dock.assigned_forklifts = 0
                 continue
-            dock.assigned_workers = min(max(dock.assigned_workers, 0), self.config.max_unloaders_per_dock)
-            dock.assigned_forklifts = max(dock.assigned_forklifts, 0)
+            workers, forklifts = sanitize_assignment_for_dock(
+                dock=dock,
+                workers=dock.assigned_workers,
+                forklifts=dock.assigned_forklifts,
+                max_unloaders_per_dock=self.config.max_unloaders_per_dock,
+            )
+            dock.assigned_workers = workers
+            dock.assigned_forklifts = forklifts
 
         self._trim_assignment("workers", self.state.resources.total_workers)
         self._trim_assignment("forklifts", self.state.resources.total_forklifts)

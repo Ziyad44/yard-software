@@ -14,7 +14,7 @@ def test_state_transitions_enforce_strict_release_minute_by_minute() -> None:
     config = YardConfig(
         arrival_rate_per_hour=0.0,
         floor_unload_worker_rate=10.0,
-        floor_unload_forklift_assist_rate=0.0,
+        
         clear_worker_rate=1.0,
         clear_forklift_rate=0.0,
     )
@@ -84,7 +84,7 @@ def test_dock_freed_trigger_and_next_assignment_timing() -> None:
         arrival_rate_per_hour=0.0,
         review_interval_minutes=999,
         floor_unload_worker_rate=4.0,
-        floor_unload_forklift_assist_rate=0.0,
+        
         clear_worker_rate=1.0,
         clear_forklift_rate=0.0,
     )
