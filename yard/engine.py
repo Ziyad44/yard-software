@@ -67,6 +67,7 @@ def update_supervisor_inputs(
     available_workers: int | None = None,
     available_forklifts: int | None = None,
     active_docks: int | None = None,
+    config: YardConfig | None = None,
 ) -> None:
     """Update live supervisor controls without resetting queue or docks."""
     if available_workers is not None:
@@ -79,10 +80,19 @@ def update_supervisor_inputs(
         current_max = max(state.docks.keys(), default=0)
         for dock_id in range(1, max(current_max, new_active) + 1):
             if dock_id not in state.docks:
+                if config is None:
+                    staging = StagingAreaState(dock_id=dock_id)
+                else:
+                    staging = StagingAreaState(
+                        dock_id=dock_id,
+                        capacity_units=float(config.staging_capacity_units),
+                        threshold_high=float(config.staging_high_threshold),
+                        threshold_low=float(config.staging_low_threshold),
+                    )
                 state.docks[dock_id] = DockState(
                     dock_id=dock_id,
                     active=False,
-                    staging=StagingAreaState(dock_id=dock_id),
+                    staging=staging,
                 )
             # New docks start active only when they are within the requested count.
             if dock_id > current_max:
@@ -167,7 +177,7 @@ def recommend_on_triggers(
     """Run recommendation only when at least one trigger exists."""
     if not triggers:
         return None
-    recommendation = recommend_best_action(state, config=config)
+    recommendation = recommend_best_action(state, config=config, trigger_event=triggers[-1])
     state.last_recommendation = recommendation
     if recommendation is None:
         state.recent_replication_means = []
@@ -448,7 +458,12 @@ def build_ise_output(state: YardState, config: YardConfig) -> dict[str, object]:
             "score": recommendation.score,
             "robust_score": recommendation.robust_score if recommendation.robust_score > 0 else recommendation.score,
             "rationale": recommendation.rationale,
+            "selected_target_dock_id": recommendation.selected_target_dock_id,
+            "selected_dock_reason": recommendation.selected_dock_reason,
+            "resource_source_reason": recommendation.resource_source_reason,
+            "selection_note": recommendation.selection_note,
             "expected_outcomes": dict(recommendation.selected_baseline_metrics),
+            "kpi_delta": dict(recommendation.kpi_delta),
         }
         verification = dict(recommendation.verification)
 

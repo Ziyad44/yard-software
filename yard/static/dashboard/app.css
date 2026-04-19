@@ -390,6 +390,31 @@ th {
   background: color-mix(in srgb, var(--card) 72%, var(--bg-alt));
 }
 
+.rec-explain {
+  margin-top: 8px;
+  display: grid;
+  gap: 4px;
+}
+
+.recommendation-delta-wrap {
+  margin-top: 8px;
+}
+
+.delta-up {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+.delta-down {
+  color: var(--success);
+  font-weight: 700;
+}
+
+.delta-flat {
+  color: var(--muted);
+  font-weight: 700;
+}
+
 .split-grid {
   margin-top: 10px;
   display: grid;

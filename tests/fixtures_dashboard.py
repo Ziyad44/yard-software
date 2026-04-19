@@ -288,6 +288,11 @@ def assert_dashboard_matches_backend(runtime: DashboardRuntime, payload: dict[st
         assert rec_payload["decision_status"] == "none"
         assert rec_payload["is_applied"] is False
         assert rec_payload["trigger_source"] == []
+        assert rec_payload["selected_target_dock_id"] is None
+        assert rec_payload["selected_dock_reason"] == ""
+        assert rec_payload["resource_source_reason"] == ""
+        assert rec_payload["kpi_delta"] == {}
+        assert rec_payload["selection_note"] == ""
     else:
         assert rec_payload["text"] == rec_state.rationale
         assert rec_payload["rationale"] == rec_state.rationale
@@ -295,6 +300,11 @@ def assert_dashboard_matches_backend(runtime: DashboardRuntime, payload: dict[st
         assert rec_payload["decision_status"] == runtime.recommendation_decision
         assert rec_payload["selected_action_name"] == rec_state.selected_action.action_name
         assert rec_payload["hold_gate_release"] == rec_state.selected_action.hold_gate_release
+        assert rec_payload["selected_target_dock_id"] == rec_state.selected_target_dock_id
+        assert rec_payload["selected_dock_reason"] == rec_state.selected_dock_reason
+        assert rec_payload["resource_source_reason"] == rec_state.resource_source_reason
+        assert rec_payload["kpi_delta"] == rec_state.kpi_delta
+        assert rec_payload["selection_note"] == rec_state.selection_note
         assert rec_payload["forecast"]
         assert rec_payload["evaluations"]
     assert rec_payload["minute_generated"] == runtime.last_recommendation_minute
@@ -316,6 +326,11 @@ def assert_dashboard_matches_backend(runtime: DashboardRuntime, payload: dict[st
         assert isinstance(rec_payload["assignment_by_dock"], list)
         assert isinstance(rec_payload["top_candidates"], list)
         assert len(rec_payload["top_candidates"]) <= 3
+        if rec_payload["top_candidates"]:
+            ranks = [row["rank"] for row in rec_payload["top_candidates"]]
+            assert all(rank >= 1 for rank in ranks)
+            assert len(set(ranks)) == len(ranks)
+            assert any(row["is_selected"] for row in rec_payload["top_candidates"])
         assert rec_payload["robust_score"] is not None
         if trigger_source_events:
             assert rec_payload["latest_trigger_type"] == trigger_source_events[-1].trigger_type

@@ -39,7 +39,10 @@ def test_scenario_a_normal_flow() -> None:
     assert payload["recommendation"]["minute_generated"] is not None
     assert payload["resource_summary"]["workers_assigned"] <= payload["resource_summary"]["workers_total"]
     assert payload["resource_summary"]["forklifts_assigned"] <= payload["resource_summary"]["forklifts_total"]
-    assert all(0.0 <= card["occupancy_units"] <= 100.0 for card in payload["staging_status"])
+    assert all(
+        0.0 <= card["occupancy_units"] <= runtime.config.staging_capacity_units
+        for card in payload["staging_status"]
+    )
     assert len(payload["trends"]["minutes"]) == len(payload["trends"]["queue_length"])
     assert len(payload["trends"]["minutes"]) == len(payload["trends"]["arrivals"])
 
@@ -69,6 +72,7 @@ def test_scenario_b_staging_congestion_and_pause() -> None:
     threshold_events = 0
     reached_full = False
     remaining_at_full = None
+    capacity_limit = config.staging_capacity_units
 
     for _ in range(80):
         runtime.step(1)
@@ -76,7 +80,7 @@ def test_scenario_b_staging_congestion_and_pause() -> None:
             threshold_events += 1
 
         dock = runtime.state.docks[1]
-        if dock.staging.occupancy_units >= 100.0:
+        if dock.staging.occupancy_units >= capacity_limit:
             reached_full = True
             remaining_at_full = dock.current_truck.remaining_load_units if dock.current_truck else None
             break
@@ -86,7 +90,7 @@ def test_scenario_b_staging_congestion_and_pause() -> None:
 
     runtime.step(3)
     dock_after = runtime.state.docks[1]
-    assert dock_after.staging.occupancy_units == 100.0
+    assert dock_after.staging.occupancy_units == capacity_limit
     assert dock_after.current_truck is not None
     assert dock_after.current_truck.remaining_load_units == remaining_at_full
 
@@ -140,7 +144,7 @@ def test_scenario_d_recommendation_apply_changes_future_path() -> None:
         ),
         config=config,
     )
-    runtime.state.docks[2].staging.occupancy_units = 96.0
+    runtime.state.docks[2].staging.occupancy_units = runtime.config.staging_capacity_units * 0.96
     runtime.state.docks[2].staging.threshold_alert_active = False
 
     runtime.step(1)

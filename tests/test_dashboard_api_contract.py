@@ -52,6 +52,7 @@ def test_dashboard_api_contract_state_and_lifecycle() -> None:
         assert set(initial["forecast"]["scenarios"].keys()) >= {"low", "baseline", "high"}
         assert "snapshot" in initial["ise_output"]
         assert "evaluations" in initial["ise_output"]
+        assert all(row["staging_capacity_units"] == 40.0 for row in initial["dock_status"])
         if initial["recommendation"]["minute_generated"] is None:
             assert initial["recommendation"]["text"] == "No active recommendation."
             assert initial["recommendation"]["rationale"] == "Waiting for next trigger."
@@ -92,6 +93,10 @@ def test_dashboard_api_contract_state_and_lifecycle() -> None:
         assert updated["supervisor_inputs"]["available_forklifts"] == 2
         assert updated["supervisor_inputs"]["max_unloaders_per_dock"] == 2
         assert all(row["assigned_workers"] <= 2 for row in updated["dock_status"])
+        assert all(row["staging_capacity_units"] == 40.0 for row in updated["dock_status"])
+
+        refreshed = _get_json(base_url, "/api/state")
+        assert all(row["staging_capacity_units"] == 40.0 for row in refreshed["dock_status"])
     finally:
         server.shutdown()
         server.server_close()

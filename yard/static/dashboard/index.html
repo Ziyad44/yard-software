@@ -101,13 +101,30 @@
       <div id="recommendationHeadline" class="rec-main">No active recommendation.</div>
       <div id="recommendationRationale" class="muted">Waiting for next trigger.</div>
       <div id="recommendationMeta" class="chip-row"></div>
+      <div class="rec-explain">
+        <div id="recommendationDockReason" class="muted">Dock reason: waiting for trigger.</div>
+        <div id="recommendationResourceReason" class="muted">Resource source: waiting for trigger.</div>
+      </div>
+      <div class="table-wrap compact recommendation-delta-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>KPI Delta</th>
+              <th>Before</th>
+              <th>After</th>
+              <th>Change</th>
+            </tr>
+          </thead>
+          <tbody id="recommendationDeltaBody"></tbody>
+        </table>
+      </div>
       <div class="button-row">
-        <button id="applyRecBtn" type="button" class="btn btn-success">Accept Recommendation</button>
+        <button id="applyRecBtn" type="button" class="btn btn-success">Accept Selected Recommendation</button>
         <button id="keepPlanBtn" type="button" class="btn btn-secondary">Reject / Keep Current Plan</button>
       </div>
       <div class="split-grid">
         <div>
-          <h3>Resource Assignment by Dock</h3>
+          <h3>Suggested Resource Assignment by Dock</h3>
           <div class="table-wrap compact">
             <table>
               <thead>
@@ -122,13 +139,15 @@
           </div>
         </div>
         <div>
-          <h3>Top Candidate Scores</h3>
+          <h3>Candidate Scores (Lower Is Better)</h3>
           <div class="table-wrap compact">
             <table>
               <thead>
                 <tr>
+                  <th>Rank</th>
                   <th>Candidate</th>
                   <th>Score</th>
+                  <th>Status</th>
                 </tr>
               </thead>
               <tbody id="recommendationCandidateBody"></tbody>

@@ -36,14 +36,14 @@ def test_state_transitions_enforce_strict_release_minute_by_minute() -> None:
     assert not update_busy_dock_one_step(dock, config)
     assert dock.current_truck is not None
     assert dock.current_truck.remaining_load_units == pytest.approx(2.0)
-    assert dock.staging.occupancy_units == pytest.approx(9.0)
+    assert dock.staging.occupancy_units == pytest.approx(10.0)
 
     assert not update_busy_dock_one_step(dock, config)
     assert dock.current_truck is not None
     assert dock.current_truck.remaining_load_units == pytest.approx(0.0)
-    assert dock.staging.occupancy_units == pytest.approx(10.0)
+    assert dock.staging.occupancy_units == pytest.approx(11.0)
 
-    for expected in range(9, 0, -1):
+    for expected in range(10, 0, -1):
         assert not update_busy_dock_one_step(dock, config)
         assert dock.current_truck is not None
         assert dock.staging.occupancy_units == pytest.approx(float(expected))

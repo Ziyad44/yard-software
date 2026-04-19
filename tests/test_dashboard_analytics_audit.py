@@ -79,7 +79,11 @@ def test_dashboard_analytics_values_match_backend_calculations() -> None:
 
     if runtime.state.recent_replication_means:
         verification_expected = build_verification_bundle(
-            arrival_rate_per_hour=float(snapshot.predicted_effective_flow_rate_per_hour or 0.0),
+            throughput_rate_trucks_per_min=max(
+                float(snapshot.predicted_effective_flow_rate_per_hour or 0.0),
+                0.0,
+            )
+            / 60.0,
             avg_time_in_system_minutes=float(snapshot.predicted_avg_time_in_system_minutes or 0.0),
             avg_number_in_system=float(snapshot.predicted_avg_number_in_system or 0.0),
             replication_means=list(runtime.state.recent_replication_means),
@@ -254,19 +258,21 @@ def test_scenario_d_recommendation_apply_updates_live_assignments_and_future_cyc
 
 def test_scenario_e_verification_formula_correctness() -> None:
     spec3 = littles_law_check(
-        arrival_rate_per_hour=24.0,
+        throughput_rate_trucks_per_min=24.0 / 60.0,
         avg_time_in_system_minutes=30.0,
         avg_number_in_system=12.0,
-        threshold=0.25,
+        threshold=0.10,
     )
     expected_rhs = (24.0 / 60.0) * 30.0
-    expected_error = abs(12.0 - expected_rhs) / max(12.0, expected_rhs, 1e-6)
+    expected_error = abs(12.0 - expected_rhs) / max(expected_rhs, 1e-6)
     assert spec3["rhs_lambda_times_W"] == pytest.approx(expected_rhs, abs=1e-9)
     assert spec3["relative_error"] == pytest.approx(expected_error, abs=1e-9)
+    assert spec3["Relative error %"] == pytest.approx(expected_error * 100.0, abs=1e-9)
+    assert spec3["PASS / FAIL"] == "PASS"
     assert spec3["pass"] is True
 
     replications = [20.0, 22.0, 24.0, 21.0, 23.0]
-    spec4 = ci_half_width_ratio(replication_means=replications, threshold=0.30)
+    spec4 = ci_half_width_ratio(replication_means=replications, threshold=0.20)
     mean = sum(replications) / len(replications)
     sample_var = sum((x - mean) ** 2 for x in replications) / (len(replications) - 1)
     sample_std = sample_var ** 0.5
@@ -276,3 +282,11 @@ def test_scenario_e_verification_formula_correctness() -> None:
     assert spec4["half_width"] == pytest.approx(expected_half_width, abs=1e-9)
     assert spec4["ratio"] == pytest.approx(expected_ratio, abs=1e-9)
     assert spec4["pass"] is True
+
+
+def test_dashboard_verification_targets_use_updated_threshold_labels() -> None:
+    runtime = _make_runtime(YardConfig(review_interval_minutes=999, arrival_rate_per_hour=0.0), seed=701)
+    payload = runtime.get_dashboard_payload()
+
+    assert payload["verification"]["spec_3"]["target"] == "Target (<=): 10%"
+    assert payload["verification"]["spec_4"]["target"] == "<= 20% of mean"

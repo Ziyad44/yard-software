@@ -77,6 +77,25 @@ def test_arrivals_are_deterministic_with_fixed_seed() -> None:
     assert run(44) != run(45)
 
 
+def test_generated_arrivals_use_configured_truck_load_units() -> None:
+    expected_loads = YardConfig().resolved_truck_load_units()
+
+    for truck_type, expected_load in expected_loads.items():
+        config = YardConfig(
+            arrival_rate_per_hour=3600.0,
+            truck_type_mix={truck_type: 1.0},
+        )
+        state = _empty_state()
+        state.now_minute = 0
+        arrivals = generate_arrivals_for_minute(state, config, random.Random(99))
+
+        assert arrivals, f"Expected arrivals for {truck_type}"
+        for truck in arrivals:
+            assert truck.truck_type == truck_type
+            assert truck.initial_load_units == pytest.approx(expected_load)
+            assert truck.remaining_load_units == pytest.approx(expected_load)
+
+
 def test_unload_rate_is_exclusive_by_load_type() -> None:
     config = YardConfig()
     floor_truck = Truck(
@@ -169,18 +188,104 @@ def test_flow_conservation_equations_hold() -> None:
     unload_rate = compute_unload_rate(truck, dock, config)
     clear_rate = compute_clear_rate(dock, config)
     dt = config.time_step_minutes
-    headroom = 100.0 - previous_staging
-    inflow = min(unload_rate * dt, previous_remaining, max(headroom, 0.0))
-    outflow = min(clear_rate * dt, previous_staging + inflow)
+    if truck.is_floor_loaded:
+        cleared = min(clear_rate * dt, previous_staging)
+        staging_after_clear = max(previous_staging - cleared, 0.0)
+        headroom = dock.staging.capacity_units - staging_after_clear
+        inflow = min(unload_rate * dt, previous_remaining, max(headroom, 0.0))
+        expected_staging_after = staging_after_clear + inflow
+    else:
+        headroom_before = max(dock.staging.capacity_units - previous_staging, 0.0)
+        if previous_remaining > 0.0 and headroom_before > 0.0:
+            inflow = min(unload_rate * dt, previous_remaining, headroom_before)
+            cleared = 0.0
+        elif previous_staging > 0.0:
+            inflow = 0.0
+            cleared = min(clear_rate * dt, previous_staging)
+        else:
+            inflow = 0.0
+            cleared = 0.0
+        expected_staging_after = previous_staging + inflow - cleared
 
     was_freed = update_busy_dock_one_step(dock, config=config)
 
     assert not was_freed
-    assert dock.staging.occupancy_units == pytest.approx(previous_staging + inflow - outflow, abs=1e-6)
+    assert dock.staging.occupancy_units == pytest.approx(expected_staging_after, abs=1e-6)
     assert truck.remaining_load_units == pytest.approx(max(previous_remaining - inflow, 0.0), abs=1e-6)
 
 
-def test_unloading_pauses_when_staging_is_full() -> None:
+def test_medium_palletized_unload_moves_same_units_to_staging_when_clearing_disabled() -> None:
+    config = YardConfig(clear_forklift_rate=0.0)
+    truck = Truck(
+        truck_id="T-PALLET-STEP",
+        truck_type="medium_palletized",
+        initial_load_units=12.0,
+        remaining_load_units=12.0,
+        gate_arrival_minute=0,
+    )
+    dock = DockState(
+        dock_id=1,
+        active=True,
+        current_truck=truck,
+        assigned_workers=0,
+        assigned_forklifts=1,
+        staging=StagingAreaState(dock_id=1, occupancy_units=0.0, capacity_units=config.staging_capacity_units),
+    )
+
+    remaining_before = truck.remaining_load_units
+    staging_before = dock.staging.occupancy_units
+    expected_unloaded = min(
+        config.pallet_unload_forklift_rate * config.time_step_minutes,
+        remaining_before,
+        dock.staging.capacity_units - staging_before,
+    )
+
+    was_freed = update_busy_dock_one_step(dock, config=config)
+
+    assert not was_freed
+    unloaded_this_step = remaining_before - truck.remaining_load_units
+    staging_delta = dock.staging.occupancy_units - staging_before
+    assert unloaded_this_step == pytest.approx(expected_unloaded, abs=1e-6)
+    assert staging_delta == pytest.approx(expected_unloaded, abs=1e-6)
+
+
+def test_medium_palletized_step_conserves_units_with_explicit_clearing_term() -> None:
+    config = YardConfig(clear_forklift_rate=1.2)
+    truck = Truck(
+        truck_id="T-PALLET-CONSERVE",
+        truck_type="medium_palletized",
+        initial_load_units=12.0,
+        remaining_load_units=12.0,
+        gate_arrival_minute=0,
+    )
+    dock = DockState(
+        dock_id=1,
+        active=True,
+        current_truck=truck,
+        assigned_workers=0,
+        assigned_forklifts=1,
+        staging=StagingAreaState(dock_id=1, occupancy_units=4.0, capacity_units=config.staging_capacity_units),
+    )
+
+    remaining_before = truck.remaining_load_units
+    staging_before = dock.staging.occupancy_units
+    unload_capacity = config.pallet_unload_forklift_rate * config.time_step_minutes
+
+    was_freed = update_busy_dock_one_step(dock, config=config)
+
+    assert not was_freed
+    unloaded_this_step = remaining_before - truck.remaining_load_units
+    staging_after = dock.staging.occupancy_units
+    expected_unloaded = min(
+        unload_capacity,
+        remaining_before,
+        dock.staging.capacity_units - staging_before,
+    )
+    assert unloaded_this_step == pytest.approx(expected_unloaded, abs=1e-6)
+    assert staging_after == pytest.approx(staging_before + unloaded_this_step, abs=1e-6)
+
+
+def test_unloading_uses_headroom_freed_by_clearing_in_same_step() -> None:
     config = YardConfig()
     truck = Truck(
         truck_id="T00011",
@@ -201,8 +306,9 @@ def test_unloading_pauses_when_staging_is_full() -> None:
     was_freed = update_busy_dock_one_step(dock, config=config)
 
     assert not was_freed
-    assert truck.remaining_load_units == pytest.approx(10.0)
-    assert dock.staging.occupancy_units < 100.0
+    # Floor-load handling clears first, creating headroom for unload in the same tick.
+    assert truck.remaining_load_units < 10.0
+    assert dock.staging.occupancy_units == pytest.approx(100.0)
 
 
 def test_no_early_dock_release_while_staging_has_load() -> None:
@@ -281,9 +387,11 @@ def test_completion_records_departure_and_gate_history() -> None:
     dock.staging.load_family = "floor"
     state.update_resource_assignment_counters()
 
-    triggers = simulate_one_minute(state, config=config, rng=random.Random(77))
+    first_triggers = simulate_one_minute(state, config=config, rng=random.Random(77))
+    second_triggers = simulate_one_minute(state, config=config, rng=random.Random(78))
 
-    assert any(event.trigger_type == "dock_freed" for event in triggers)
+    assert not any(event.trigger_type == "dock_freed" for event in first_triggers)
+    assert any(event.trigger_type == "dock_freed" for event in second_triggers)
     assert len(state.completed_trucks) == 1
     completed = state.completed_trucks[0]
     assert completed.truck_id == "T-HIST-1"

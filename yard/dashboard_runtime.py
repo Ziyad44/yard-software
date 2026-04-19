@@ -23,7 +23,7 @@ from .engine import (
 )
 from .models import Action, DockState, Recommendation, TriggerEvent, YardState
 from .simulation import compute_clear_rate, dock_load_family, sanitize_assignment_for_dock, update_busy_dock_one_step
-from .verification import build_verification_bundle
+from .verification import build_verification_bundle, littles_law_check
 
 
 MAX_ETA_MINUTES = 12 * 60
@@ -59,6 +59,7 @@ class DashboardRuntime:
 
     def __post_init__(self) -> None:
         self.rng = random.Random(self.rng_seed)
+        self._sync_new_dock_defaults()
         if self.state.active_action is None:
             self.apply_balanced_starting_action()
         self._enforce_idle_dock_zero_assignments()
@@ -194,6 +195,7 @@ class DashboardRuntime:
             available_workers=available_workers,
             available_forklifts=available_forklifts,
             active_docks=active_docks,
+            config=self.config,
         )
         self._sync_new_dock_defaults()
 
@@ -410,11 +412,26 @@ class DashboardRuntime:
     def _top_candidate_rows(recommendation: Recommendation | None) -> list[dict[str, Any]]:
         if recommendation is None:
             return []
-        sorted_candidates = sorted(recommendation.candidate_scores.items(), key=lambda item: item[1])[:3]
-        return [
-            {"action_name": action_name, "score": round(float(score), 3)}
-            for action_name, score in sorted_candidates
+        selected_name = recommendation.selected_action.action_name
+        sorted_candidates = sorted(recommendation.candidate_scores.items(), key=lambda item: item[1])
+        ranked = [
+            {
+                "rank": index,
+                "action_name": action_name,
+                "score": round(float(score), 3),
+                "is_selected": action_name == selected_name,
+            }
+            for index, (action_name, score) in enumerate(sorted_candidates, start=1)
         ]
+        top_rows = ranked[:3]
+        if not any(row["is_selected"] for row in top_rows):
+            selected_row = next((row for row in ranked if row["is_selected"]), None)
+            if selected_row is not None:
+                if len(top_rows) >= 3:
+                    top_rows[-1] = selected_row
+                else:
+                    top_rows.append(selected_row)
+        return top_rows
 
     @staticmethod
     def _recommended_assignment_by_dock(recommendation: Recommendation | None) -> list[dict[str, int]]:
@@ -433,8 +450,7 @@ class DashboardRuntime:
 
     def _sync_new_dock_defaults(self) -> None:
         for dock in self.state.docks.values():
-            if dock.staging.capacity_units <= 0.0:
-                dock.staging.capacity_units = self.config.staging_capacity_units
+            dock.staging.capacity_units = self.config.staging_capacity_units
             dock.staging.threshold_high = self.config.staging_high_threshold
             dock.staging.threshold_low = self.config.staging_low_threshold
             if dock.staging.occupancy_units > dock.staging.capacity_units:
@@ -546,7 +562,11 @@ class DashboardRuntime:
     ) -> dict[str, dict[str, Any]]:
         if self.state.recent_replication_means:
             verification_bundle = build_verification_bundle(
-                arrival_rate_per_hour=float(snapshot.predicted_effective_flow_rate_per_hour or 0.0),
+                throughput_rate_trucks_per_min=max(
+                    float(snapshot.predicted_effective_flow_rate_per_hour or 0.0),
+                    0.0,
+                )
+                / 60.0,
                 avg_time_in_system_minutes=float(snapshot.predicted_avg_time_in_system_minutes or 0.0),
                 avg_number_in_system=float(snapshot.predicted_avg_number_in_system or 0.0),
                 replication_means=list(self.state.recent_replication_means),
@@ -559,37 +579,117 @@ class DashboardRuntime:
         return {"spec_3": spec3, "spec_4": spec4}
 
     @staticmethod
+    def _safe_float(value: Any, default: float = 0.0) -> float:
+        try:
+            parsed = float(value)
+        except (TypeError, ValueError):
+            return default
+        return parsed if math.isfinite(parsed) else default
+
+    @staticmethod
+    def _verification_status_from_value(value: float, threshold: float) -> str:
+        if not math.isfinite(value):
+            return "fail"
+        limit = max(float(threshold), 1e-6)
+        if value <= limit:
+            return "pass"
+        if value <= limit * 1.25:
+            return "warn"
+        return "fail"
+
+    @staticmethod
+    def _resolve_verification_status(
+        *,
+        status: Any,
+        pass_flag: Any,
+        value: float,
+        threshold: float,
+        insufficient_data: bool = False,
+    ) -> str:
+        normalized = str(status or "").strip().lower()
+        if normalized in {"pass", "warn", "fail", "insufficient_data"}:
+            return normalized
+        if insufficient_data:
+            return "insufficient_data"
+        if pass_flag is True:
+            return "pass"
+        if pass_flag is False and not math.isfinite(value):
+            return "fail"
+        return DashboardRuntime._verification_status_from_value(value, threshold)
+
+    @staticmethod
     def _cards_from_ise_verification(bundle: dict[str, Any]) -> dict[str, dict[str, Any]]:
         spec3 = bundle.get("spec_3_littles_law", {})
         spec4 = bundle.get("spec_4_ci_halfwidth", {})
-        spec3_status = "pass" if spec3.get("pass") else "warn"
-        spec4_status = "pass" if spec4.get("pass") else "warn"
+        spec3_threshold = DashboardRuntime._safe_float(spec3.get("target_max_error"), 0.10)
+        spec4_threshold = DashboardRuntime._safe_float(spec4.get("target_max_ratio"), 0.20)
+        spec3_value = DashboardRuntime._safe_float(spec3.get("relative_error"), 0.0)
+        spec4_value = DashboardRuntime._safe_float(spec4.get("ratio"), float("inf"))
+        spec3_pass_fail = str(spec3.get("PASS / FAIL", "")).strip().upper()
+        if spec3_pass_fail not in {"PASS", "FAIL"}:
+            spec3_pass_fail = "PASS" if bool(spec3.get("pass", False)) else "FAIL"
+        spec3_status = "pass" if spec3_pass_fail == "PASS" else "fail"
+        spec4_status = DashboardRuntime._resolve_verification_status(
+            status=spec4.get("status"),
+            pass_flag=spec4.get("pass"),
+            value=spec4_value,
+            threshold=spec4_threshold,
+            insufficient_data=bool(spec4.get("insufficient_data", False)),
+        )
+        l_trucks = DashboardRuntime._safe_float(
+            spec3.get("Time-average number in system, L (trucks)"),
+            DashboardRuntime._safe_float(spec3.get("lhs_avg_number_in_system"), 0.0),
+        )
+        lambda_per_min = DashboardRuntime._safe_float(
+            spec3.get("Throughput rate, lambda (trucks/min)"),
+            DashboardRuntime._safe_float(spec3.get("throughput_rate_trucks_per_min_used"), 0.0),
+        )
+        w_minutes = DashboardRuntime._safe_float(
+            spec3.get("Average time in system, W (min)"),
+            DashboardRuntime._safe_float(spec3.get("avg_time_in_system_minutes_used"), 0.0),
+        )
+        lambda_w = DashboardRuntime._safe_float(
+            spec3.get("Computed lambda*W"),
+            DashboardRuntime._safe_float(spec3.get("rhs_lambda_times_W"), 0.0),
+        )
+        error_percent = DashboardRuntime._safe_float(
+            spec3.get("Relative error %"),
+            spec3_value * 100.0,
+        )
+        spec4_n = int(spec4.get("n_replications", 0))
+        if spec4_status == "insufficient_data":
+            spec4_current_value = f"INSUFFICIENT DATA (n={spec4_n}, need at least 2)."
+        else:
+            ratio_text = "inf" if not math.isfinite(spec4_value) else f"{spec4_value * 100.0:.1f}%"
+            spec4_current_value = (
+                f"half-width={DashboardRuntime._safe_float(spec4.get('half_width'), 0.0):.3f}, "
+                f"mean={DashboardRuntime._safe_float(spec4.get('mean'), 0.0):.3f}, "
+                f"ratio={ratio_text}, n={spec4_n}"
+            )
         return {
             "spec_3": {
                 "title": "Spec 3 - Little's Law",
                 "status": spec3_status,
                 "current_value": (
-                    f"L={float(spec3.get('lhs_avg_number_in_system', 0.0)):.2f}, "
-                    f"lambda*W={float(spec3.get('rhs_lambda_times_W', 0.0)):.2f}, "
-                    f"error={float(spec3.get('relative_error', 0.0)) * 100.0:.1f}%"
+                    f"Time-average number in system, L (trucks)={l_trucks:.2f}; "
+                    f"Throughput rate, lambda (trucks/min)={lambda_per_min:.4f}; "
+                    f"Average time in system, W (min)={w_minutes:.2f}; "
+                    f"Computed lambda*W={lambda_w:.2f}; "
+                    f"Relative error %={error_percent:.2f}; "
+                    f"PASS / FAIL={spec3_pass_fail}"
                 ),
-                "target": f"relative error <= {float(spec3.get('target_max_error', 0.25)) * 100.0:.1f}%",
-                "value": float(spec3.get("relative_error", 0.0)),
-                "threshold": float(spec3.get("target_max_error", 0.25)),
+                "target": f"Target (<=): {spec3_threshold * 100.0:.0f}%",
+                "value": spec3_value if math.isfinite(spec3_value) else None,
+                "threshold": spec3_threshold,
                 "details": spec3,
             },
             "spec_4": {
                 "title": "Spec 4 - CI Half-Width Ratio",
                 "status": spec4_status,
-                "current_value": (
-                    f"half-width={float(spec4.get('half_width', 0.0)):.3f}, "
-                    f"mean={float(spec4.get('mean', 0.0)):.3f}, "
-                    f"ratio={float(spec4.get('ratio', 0.0)) * 100.0:.1f}%, "
-                    f"n={int(spec4.get('n_replications', 0))}"
-                ),
-                "target": f"ratio <= {float(spec4.get('target_max_ratio', 0.30)) * 100.0:.1f}%",
-                "value": float(spec4.get("ratio", 0.0)),
-                "threshold": float(spec4.get("target_max_ratio", 0.30)),
+                "current_value": spec4_current_value,
+                "target": f"<= {spec4_threshold * 100.0:.0f}% of mean",
+                "value": spec4_value if math.isfinite(spec4_value) else None,
+                "threshold": spec4_threshold,
                 "details": spec4,
             },
         }
@@ -601,56 +701,68 @@ class DashboardRuntime:
         trend_points: list[TrendPoint],
     ) -> dict[str, Any]:
         title = "Spec 3 - Little's Law"
+        threshold = max(float(self.config.verification_littles_law_threshold), 1e-6)
+        target_text = f"Target (<=): {threshold * 100.0:.0f}%"
         if len(trend_points) < 6:
             return {
                 "title": title,
                 "status": "insufficient_data",
                 "current_value": "Need at least 6 minutes of trend data.",
-                "target": "relative error <= 25%",
+                "target": target_text,
                 "value": None,
-                "threshold": 0.25,
+                "threshold": threshold,
             }
 
-        avg_queue = statistics.mean(point.queue_length for point in trend_points)
-        total_arrivals = sum(point.arrivals for point in trend_points[1:])
-        observed_minutes = max(len(trend_points) - 1, 1)
-        lambda_per_min = total_arrivals / observed_minutes
-        avg_wait = float(snapshot.predicted_avg_wait_minutes or 0.0)
-        lambda_times_w = lambda_per_min * avg_wait
-        baseline = max(avg_queue, lambda_times_w, 1e-6)
-        relative_error = abs(avg_queue - lambda_times_w) / baseline
-        status = "pass" if relative_error <= 0.25 else "warn"
+        throughput_rate_per_min = max(
+            float(snapshot.predicted_effective_flow_rate_per_hour or 0.0),
+            0.0,
+        ) / 60.0
+        w_minutes = float(snapshot.predicted_avg_time_in_system_minutes or 0.0)
+        l_trucks = float(snapshot.predicted_avg_number_in_system or 0.0)
+        spec3 = littles_law_check(
+            throughput_rate_trucks_per_min=throughput_rate_per_min,
+            avg_time_in_system_minutes=w_minutes,
+            avg_number_in_system=l_trucks,
+            threshold=threshold,
+        )
+        relative_error = float(spec3.get("relative_error", 0.0))
+        error_percent = float(spec3.get("Relative error %", relative_error * 100.0))
+        pass_fail = str(spec3.get("PASS / FAIL", "FAIL")).upper()
+        status = "pass" if pass_fail == "PASS" else "fail"
+        lambda_times_w = float(spec3.get("Computed lambda*W", 0.0))
+        lambda_per_min = float(spec3.get("Throughput rate, lambda (trucks/min)", throughput_rate_per_min))
 
         return {
             "title": title,
             "status": status,
             "current_value": (
-                f"L={avg_queue:.2f}, lambda*W={lambda_times_w:.2f}, "
-                f"error={relative_error * 100:.1f}%"
+                f"Time-average number in system, L (trucks)={l_trucks:.2f}; "
+                f"Throughput rate, lambda (trucks/min)={lambda_per_min:.4f}; "
+                f"Average time in system, W (min)={w_minutes:.2f}; "
+                f"Computed lambda*W={lambda_times_w:.2f}; "
+                f"Relative error %={error_percent:.2f}; "
+                f"PASS / FAIL={pass_fail}"
             ),
-            "target": "relative error <= 25%",
+            "target": target_text,
             "value": round(relative_error, 4),
-            "threshold": 0.25,
-            "details": {
-                "avg_queue_length": round(avg_queue, 3),
-                "arrival_rate_per_min": round(lambda_per_min, 3),
-                "predicted_wait_min": round(avg_wait, 3),
-                "lambda_times_wait": round(lambda_times_w, 3),
-            },
+            "threshold": threshold,
+            "details": spec3,
         }
 
     def _compute_spec4_card(self, *, trend_points: list[TrendPoint]) -> dict[str, Any]:
         title = "Spec 4 - CI Half-Width Ratio"
+        threshold = max(float(self.config.verification_ci_ratio_threshold), 1e-6)
+        target_text = f"<= {threshold * 100.0:.0f}% of mean"
         queue_values = [float(point.queue_length) for point in trend_points]
         n = len(queue_values)
         if n < 2:
             return {
                 "title": title,
                 "status": "insufficient_data",
-                "current_value": "Need at least 2 data points.",
-                "target": "ratio <= 30% with n>=10",
+                "current_value": "INSUFFICIENT DATA (need at least 2 points).",
+                "target": target_text,
                 "value": None,
-                "threshold": 0.30,
+                "threshold": threshold,
             }
 
         mean_queue = statistics.mean(queue_values)
@@ -664,7 +776,7 @@ class DashboardRuntime:
         if n < 10:
             status = "insufficient_data"
         else:
-            status = "pass" if ratio <= 0.30 else "warn"
+            status = self._verification_status_from_value(ratio, threshold)
 
         ratio_text = "inf" if math.isinf(ratio) else f"{ratio * 100:.1f}%"
         return {
@@ -673,9 +785,9 @@ class DashboardRuntime:
             "current_value": (
                 f"half-width={half_width:.3f}, mean={mean_queue:.3f}, ratio={ratio_text}, n={n}"
             ),
-            "target": "ratio <= 30% with n>=10",
+            "target": target_text,
             "value": None if math.isinf(ratio) else round(ratio, 4),
-            "threshold": 0.30,
+            "threshold": threshold,
             "details": {
                 "sample_count": n,
                 "mean_queue": round(mean_queue, 3),
@@ -710,6 +822,11 @@ class DashboardRuntime:
                 "robust_score": None,
                 "candidate_scores": {},
                 "selected_baseline_metrics": {},
+                "selected_target_dock_id": None,
+                "selected_dock_reason": "",
+                "resource_source_reason": "",
+                "kpi_delta": {},
+                "selection_note": "",
                 "forecast": {},
                 "verification_bundle": {},
                 "evaluations": [],
@@ -728,6 +845,11 @@ class DashboardRuntime:
                 key: round(value, 3) for key, value in recommendation.candidate_scores.items()
             },
             "selected_baseline_metrics": dict(recommendation.selected_baseline_metrics),
+            "selected_target_dock_id": recommendation.selected_target_dock_id,
+            "selected_dock_reason": recommendation.selected_dock_reason,
+            "resource_source_reason": recommendation.resource_source_reason,
+            "kpi_delta": dict(recommendation.kpi_delta),
+            "selection_note": recommendation.selection_note,
             "forecast": (
                 {
                     "baseline_rate_per_hour": forecast.baseline_rate_per_hour,

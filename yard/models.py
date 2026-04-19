@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal, Optional
 
+from .config import DEFAULT_STAGING_CAPACITY_UNITS
+
 
 EPSILON = 1e-6
 
@@ -74,7 +76,7 @@ class StagingAreaState:
 
     dock_id: int
     occupancy_units: float = 0.0
-    capacity_units: float = 100.0
+    capacity_units: float = DEFAULT_STAGING_CAPACITY_UNITS
     threshold_high: float = 0.85
     threshold_low: float = 0.75
     threshold_alert_active: bool = False
@@ -213,6 +215,11 @@ class Recommendation:
     evaluations: list[ActionEvaluation] = field(default_factory=list)
     verification: dict[str, dict[str, Any]] = field(default_factory=dict)
     selected_baseline_metrics: dict[str, float] = field(default_factory=dict)
+    selected_target_dock_id: Optional[int] = None
+    selected_dock_reason: str = ""
+    resource_source_reason: str = ""
+    kpi_delta: dict[str, dict[str, float]] = field(default_factory=dict)
+    selection_note: str = ""
 
 
 @dataclass

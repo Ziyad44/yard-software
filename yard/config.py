@@ -26,13 +26,15 @@ DEFAULT_TRUCK_TYPE_MIX: dict[str, float] = {
 
 
 DEFAULT_TRUCK_LOAD_UNITS: dict[str, float] = {
-    "small_floor": 30.0,
-    "medium_floor": 50.0,
-    "large_floor": 70.0,
-    "small_palletized": 24.0,
-    "medium_palletized": 40.0,
-    "large_palletized": 56.0,
+    "small_floor": 6.0,
+    "medium_floor": 12.0,
+    "large_floor": 30.0,
+    "small_palletized": 6.0,
+    "medium_palletized": 12.0,
+    "large_palletized": 30.0,
 }
+
+DEFAULT_STAGING_CAPACITY_UNITS: float = 40.0
 
 
 @dataclass(frozen=True)
@@ -46,7 +48,7 @@ class YardConfig:
     forecast_smoothing_alpha: float = 0.35
     forecast_scenario_delta: float = 0.20
 
-    staging_capacity_units: float = 100.0
+    staging_capacity_units: float = DEFAULT_STAGING_CAPACITY_UNITS
     staging_high_threshold: float = 0.85
     staging_low_threshold: float = 0.75
 
@@ -67,9 +69,9 @@ class YardConfig:
 
     # Avoid unnecessary action churn
     min_score_improvement_to_switch: float = 0.05
-    evaluation_replications: int = 4
-    verification_littles_law_threshold: float = 0.25
-    verification_ci_ratio_threshold: float = 0.30
+    evaluation_replications: int = 8
+    verification_littles_law_threshold: float = 0.10
+    verification_ci_ratio_threshold: float = 0.20
 
     truck_type_mix: dict[str, float] = field(default_factory=lambda: dict(DEFAULT_TRUCK_TYPE_MIX))
     truck_load_units: dict[str, float] = field(default_factory=lambda: dict(DEFAULT_TRUCK_LOAD_UNITS))
@@ -81,3 +83,22 @@ class YardConfig:
         if total <= 0.0:
             return dict(DEFAULT_TRUCK_TYPE_MIX)
         return {k: v / total for k, v in filtered.items()}
+
+    def resolved_truck_load_units(self) -> dict[str, float]:
+        """
+        Return a complete load mapping over known truck types.
+
+        Missing, zero, or negative values fall back to defaults so runtime
+        sampling and service-time estimates stay valid.
+        """
+        source = self.truck_load_units if isinstance(self.truck_load_units, dict) else {}
+        resolved: dict[str, float] = {}
+        for truck_type in TRUCK_TYPES:
+            fallback = float(DEFAULT_TRUCK_LOAD_UNITS[truck_type])
+            candidate = source.get(truck_type, fallback)
+            try:
+                value = float(candidate)
+            except (TypeError, ValueError):
+                value = fallback
+            resolved[truck_type] = value if value > 0.0 else fallback
+        return resolved

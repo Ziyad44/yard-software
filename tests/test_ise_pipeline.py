@@ -116,19 +116,53 @@ def test_recommendation_and_ise_output_are_enriched() -> None:
 
 def test_verification_utilities_return_expected_shape() -> None:
     spec3 = littles_law_check(
-        arrival_rate_per_hour=30.0,
+        throughput_rate_trucks_per_min=30.0 / 60.0,
         avg_time_in_system_minutes=20.0,
         avg_number_in_system=9.5,
-        threshold=0.25,
+        threshold=0.10,
     )
     spec4 = ci_half_width_ratio(
         replication_means=[18.5, 19.0, 21.0, 20.0, 19.8],
-        threshold=0.30,
+        threshold=0.20,
     )
 
     assert "relative_error" in spec3
     assert "pass" in spec3
+    assert spec3["status"] in {"pass", "fail"}
+    assert "Time-average number in system, L (trucks)" in spec3
+    assert "Throughput rate, lambda (trucks/min)" in spec3
+    assert "Average time in system, W (min)" in spec3
+    assert "Computed lambda*W" in spec3
+    assert "Relative error %" in spec3
+    assert "Target (<=)" in spec3
+    assert "PASS / FAIL" in spec3
     assert "half_width" in spec4
     assert "ratio" in spec4
     assert "pass" in spec4
+    assert spec4["status"] in {"pass", "warn", "fail", "insufficient_data"}
 
+
+def test_verification_utilities_flag_failures_and_insufficient_data() -> None:
+    spec3_fail = littles_law_check(
+        throughput_rate_trucks_per_min=60.0 / 60.0,
+        avg_time_in_system_minutes=30.0,
+        avg_number_in_system=2.0,
+        threshold=0.10,
+    )
+    assert spec3_fail["pass"] is False
+    assert spec3_fail["status"] == "fail"
+
+    spec4_insufficient = ci_half_width_ratio(
+        replication_means=[20.0],
+        threshold=0.20,
+    )
+    assert spec4_insufficient["pass"] is False
+    assert spec4_insufficient["status"] == "insufficient_data"
+    assert spec4_insufficient["n_replications"] == 1
+
+    spec4_fail = ci_half_width_ratio(
+        replication_means=[1.0, 10.0, 20.0, 30.0, 40.0],
+        threshold=0.20,
+    )
+    assert spec4_fail["pass"] is False
+    assert spec4_fail["status"] == "fail"

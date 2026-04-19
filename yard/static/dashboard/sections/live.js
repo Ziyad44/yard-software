@@ -12,7 +12,8 @@ function numberValue(value, fallback = 0) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-export function renderLiveOperations(payload) {
+export function renderLiveOperations(payload, options = {}) {
+  const preserveFocusedInputs = options.preserveFocusedInputs !== false;
   const live = payload.live_operations || {};
   const currentMinute = numberValue(live.current_minute, 0);
   const arrivalsLastStep = numberValue(live.arrivals_last_step, 0);
@@ -38,6 +39,10 @@ export function renderLiveOperations(payload) {
   }
 
   const supervisorInputs = payload.supervisor_inputs || {};
+  const supervisorForm = document.getElementById("supervisorForm");
+  const preserveSupervisorFormValues =
+    preserveFocusedInputs &&
+    Boolean(supervisorForm && supervisorForm.contains(document.activeElement));
   const fieldIds = [
     "available_workers",
     "available_forklifts",
@@ -47,6 +52,11 @@ export function renderLiveOperations(payload) {
   for (const fieldId of fieldIds) {
     const input = document.getElementById(fieldId);
     if (input) {
+      // Preserve the whole supervisor form while editing so multi-field updates
+      // are not partially overwritten by background polling.
+      if (preserveSupervisorFormValues || (preserveFocusedInputs && document.activeElement === input)) {
+        continue;
+      }
       const value = supervisorInputs[fieldId];
       input.value = value == null ? "" : String(value);
     }

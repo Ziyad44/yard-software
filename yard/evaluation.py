@@ -148,7 +148,7 @@ def evaluate_action_across_scenarios(
     baseline = scenario_outputs.get("baseline", next(iter(scenario_outputs.values())))
     robust_score = max(metric.score for metric in scenario_outputs.values())
     verification = build_verification_bundle(
-        arrival_rate_per_hour=baseline.effective_flow_rate_per_hour,
+        throughput_rate_trucks_per_min=max(float(baseline.effective_flow_rate_per_hour), 0.0) / 60.0,
         avg_time_in_system_minutes=baseline.predicted_avg_time_in_system_minutes,
         avg_number_in_system=baseline.predicted_avg_number_in_system,
         replication_means=baseline_replication_tis,
@@ -173,4 +173,3 @@ def evaluate_action_across_scenarios(
         replication_avg_tis=baseline_replication_tis,
         verification=verification,
     )
-

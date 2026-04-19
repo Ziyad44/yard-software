@@ -91,6 +91,15 @@ def test_dashboard_html_includes_theme_toggle_and_static_module_wiring() -> None
     assert "/static/dashboard/main.js" in HTML_PAGE
 
 
+def test_dashboard_html_includes_recommendation_explainability_elements() -> None:
+    assert "id=\"recommendationDockReason\"" in HTML_PAGE
+    assert "id=\"recommendationResourceReason\"" in HTML_PAGE
+    assert "id=\"recommendationDeltaBody\"" in HTML_PAGE
+    assert "<th>Rank</th>" in HTML_PAGE
+    assert "<th>Status</th>" in HTML_PAGE
+    assert "Suggested Resource Assignment by Dock" in HTML_PAGE
+
+
 def test_dashboard_server_serves_static_assets() -> None:
     runtime = DashboardRuntime.create_default()
     handler = _build_handler(runtime, threading.Lock())

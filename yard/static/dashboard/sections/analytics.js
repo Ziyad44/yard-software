@@ -77,12 +77,17 @@ export function renderAnalytics(payload) {
           .map((card) => {
             const status = String(card.status || "warn").toUpperCase();
             const cssClass = verificationClass(card.status);
+            const targetRaw = String(card.target || "-");
+            const targetLine =
+              targetRaw.trim().toLowerCase().startsWith("target")
+                ? targetRaw
+                : `Target: ${targetRaw}`;
             return `
               <article class="verify-card">
                 <div class="verify-title">${card.title || "Verification"}</div>
                 <div class="verify-status ${cssClass}">${status}</div>
                 <div class="muted">${card.current_value || "-"}</div>
-                <div class="muted">Target: ${card.target || "-"}</div>
+                <div class="muted">${targetLine}</div>
               </article>
             `;
           })

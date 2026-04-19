@@ -32,8 +32,9 @@ function setPage(pageName) {
   }
 }
 
-function renderDashboard(payload) {
-  renderLiveOperations(payload);
+function renderDashboard(payload, options = {}) {
+  const preserveFocusedInputs = options.preserveFocusedInputs !== false;
+  renderLiveOperations(payload, { preserveFocusedInputs });
   renderDockStaging(payload);
   renderResourcePanel(payload);
   renderRecommendationPanel(payload);
@@ -41,9 +42,9 @@ function renderDashboard(payload) {
   renderQueueHistory(payload);
 }
 
-async function refreshState() {
+async function refreshState(options = {}) {
   const payload = await apiGet("/api/state");
-  renderDashboard(payload);
+  renderDashboard(payload, options);
 }
 
 function stopPolling() {
@@ -79,7 +80,7 @@ async function runWriteAction(taskLabel, action) {
   setPollingStatus(`${taskLabel}...`);
   try {
     const payload = await action();
-    renderDashboard(payload);
+    renderDashboard(payload, { preserveFocusedInputs: false });
     setPollingStatus("Auto-refresh active (2s)");
   } catch (error) {
     window.alert(error.message);
@@ -109,7 +110,7 @@ function wireEvents() {
   if (refreshBtn) {
     refreshBtn.addEventListener("click", async () => {
       try {
-        await refreshState();
+        await refreshState({ preserveFocusedInputs: false });
       } catch (error) {
         window.alert(error.message);
       }
@@ -156,7 +157,7 @@ async function init() {
   }
   wireEvents();
   setPage("operations");
-  await refreshState();
+  await refreshState({ preserveFocusedInputs: false });
   startPolling();
 }
 

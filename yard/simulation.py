@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import copy
+import logging
 import math
 import random
 
 from .config import YardConfig
 from .models import EPSILON, DockState, LoadFamily, SystemSnapshot, TriggerEvent, Truck, YardState
+
+LOGGER = logging.getLogger(__name__)
 
 
 def _clamp(value: float, low: float, high: float) -> float:
@@ -47,10 +50,11 @@ def generate_arrivals_for_minute(state: YardState, config: YardConfig, rng: rand
     lam = max(config.arrival_rate_per_hour, 0.0) * config.time_step_minutes / 60.0
     count = _poisson_sample(lam, rng)
     mix = config.normalized_truck_type_mix()
+    load_units_by_type = config.resolved_truck_load_units()
 
     for _ in range(count):
         truck_type = _sample_truck_type(mix, rng)
-        load_units = float(config.truck_load_units[truck_type])
+        load_units = float(load_units_by_type[truck_type])
         truck = Truck(
             truck_id=f"T{state.next_truck_sequence:05d}",
             truck_type=truck_type,  # type: ignore[arg-type]
@@ -157,28 +161,88 @@ def update_busy_dock_one_step(
 
     dt = float(config.time_step_minutes)
     clear_rate = compute_clear_rate(dock, config)
+    staging_before = float(dock.staging.occupancy_units)
 
     if dock.current_truck is None:
         if dock.staging.occupancy_units > EPSILON:
-            dock.staging.occupancy_units = max(dock.staging.occupancy_units - clear_rate * dt, 0.0)
+            cleared_this_step = min(clear_rate * dt, staging_before)
+            dock.staging.occupancy_units = max(staging_before - cleared_this_step, 0.0)
             if dock.staging.occupancy_units <= EPSILON:
                 dock.staging.occupancy_units = 0.0
                 dock.staging.load_family = None
+            LOGGER.debug(
+                "dock_step dock_id=%s truck_id=%s truck_type=%s remaining_before=%.4f unloaded_this_step=%.4f "
+                "staging_before=%.4f cleared_this_step=%.4f staging_after=%.4f",
+                dock.dock_id,
+                None,
+                None,
+                0.0,
+                0.0,
+                staging_before,
+                cleared_this_step,
+                dock.staging.occupancy_units,
+            )
         return False
 
     truck = dock.current_truck
     dock.staging.load_family = truck.load_family
+    remaining_before = float(truck.remaining_load_units)
     unload_rate = compute_unload_rate(truck, dock, config)
-    headroom = max(dock.staging.capacity_units - dock.staging.occupancy_units, 0.0)
-    inflow = min(unload_rate * dt, truck.remaining_load_units, headroom)
-    outflow = min(clear_rate * dt, dock.staging.occupancy_units + inflow)
+    unload_capacity = max(unload_rate * dt, 0.0)
+    clear_capacity = max(clear_rate * dt, 0.0)
+    unloaded_this_step = 0.0
+    cleared_this_step = 0.0
+    flow_mode = "floor_parallel"
 
-    dock.staging.occupancy_units = _clamp(
-        dock.staging.occupancy_units + inflow - outflow,
-        0.0,
-        dock.staging.capacity_units,
+    if truck.is_floor_loaded:
+        cleared_this_step = min(clear_capacity, staging_before)
+        staging_after_clear = max(staging_before - cleared_this_step, 0.0)
+        headroom = max(dock.staging.capacity_units - staging_after_clear, 0.0)
+        unloaded_this_step = min(unload_capacity, remaining_before, headroom)
+        staging_after = _clamp(
+            staging_after_clear + unloaded_this_step,
+            0.0,
+            dock.staging.capacity_units,
+        )
+    else:
+        # Palletized handling uses forklifts for both unload and clear.
+        # To preserve unit conservation visibility, execute a single palletized
+        # flow per tick: unload when headroom exists, otherwise clear.
+        flow_mode = "palletized_single_flow"
+        headroom_before = max(dock.staging.capacity_units - staging_before, 0.0)
+        if remaining_before > EPSILON and headroom_before > EPSILON:
+            unloaded_this_step = min(unload_capacity, remaining_before, headroom_before)
+        elif staging_before > EPSILON:
+            cleared_this_step = min(clear_capacity, staging_before)
+        staging_after = _clamp(
+            staging_before + unloaded_this_step - cleared_this_step,
+            0.0,
+            dock.staging.capacity_units,
+        )
+
+    remaining_after = max(remaining_before - unloaded_this_step, 0.0)
+    if remaining_after <= EPSILON:
+        remaining_after = 0.0
+    if staging_after <= EPSILON:
+        staging_after = 0.0
+
+    dock.staging.occupancy_units = staging_after
+    truck.remaining_load_units = remaining_after
+    LOGGER.debug(
+        "dock_step dock_id=%s truck_id=%s truck_type=%s flow_mode=%s "
+        "remaining_before=%.4f unloaded_this_step=%.4f "
+        "remaining_after=%.4f staging_before=%.4f cleared_this_step=%.4f staging_after=%.4f",
+        dock.dock_id,
+        truck.truck_id,
+        truck.truck_type,
+        flow_mode,
+        remaining_before,
+        unloaded_this_step,
+        truck.remaining_load_units,
+        staging_before,
+        cleared_this_step,
+        dock.staging.occupancy_units,
     )
-    truck.remaining_load_units = max(truck.remaining_load_units - inflow, 0.0)
 
     if truck.remaining_load_units <= EPSILON and dock.staging.occupancy_units <= EPSILON:
         truck.remaining_load_units = 0.0
@@ -421,9 +485,10 @@ def simulate_horizon(
             service_proxy = sum(historical_service) / len(historical_service)
         else:
             mix = config.normalized_truck_type_mix()
+            load_units_by_type = config.resolved_truck_load_units()
             service_proxy = 0.0
             for truck_type, probability in mix.items():
-                load_units = float(config.truck_load_units[truck_type])
+                load_units = float(load_units_by_type[truck_type])
                 if truck_type.endswith("_floor"):
                     unload_capacity = max(
                         config.floor_unload_worker_rate * max(config.max_unloaders_per_dock, 1),

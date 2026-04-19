@@ -47,6 +47,16 @@ def test_step_generates_recommendation_on_trigger() -> None:
     assert payload["recommendation"]["minute_generated"] == 1
     assert payload["recommendation"]["is_applied"] is False
     assert payload["recommendation"]["trigger_source"]
+    assert "selected_dock_reason" in payload["recommendation"]
+    assert "resource_source_reason" in payload["recommendation"]
+    assert "kpi_delta" in payload["recommendation"]
+    assert "selection_note" in payload["recommendation"]
+    top_candidates = payload["recommendation"]["top_candidates"]
+    if top_candidates:
+        ranks = [row["rank"] for row in top_candidates]
+        assert all(rank >= 1 for rank in ranks)
+        assert len(set(ranks)) == len(ranks)
+        assert any(row["is_selected"] for row in top_candidates)
     assert len(payload["trends"]["minutes"]) >= 2
 
 
@@ -143,7 +153,7 @@ def test_idle_dock_returns_to_zero_assignments_after_becoming_idle() -> None:
     state.update_resource_assignment_counters()
 
     runtime = DashboardRuntime(config=config, state=state, rng_seed=29)
-    payload = runtime.step(minutes=1)
+    payload = runtime.step(minutes=2)
     row = next(item for item in payload["dock_status"] if item["dock_id"] == 1)
 
     assert row["status"] == "idle"
@@ -164,6 +174,11 @@ def test_neutral_recommendation_payload_when_none_exists() -> None:
     assert recommendation["decision_status"] == "none"
     assert recommendation["is_applied"] is False
     assert recommendation["trigger_source"] == []
+    assert recommendation["selected_target_dock_id"] is None
+    assert recommendation["selected_dock_reason"] == ""
+    assert recommendation["resource_source_reason"] == ""
+    assert recommendation["kpi_delta"] == {}
+    assert recommendation["selection_note"] == ""
 
 
 def test_verification_cards_exist_and_survive_state_transitions() -> None:
@@ -187,3 +202,70 @@ def test_verification_cards_exist_and_survive_state_transitions() -> None:
         payload_after_apply = runtime.apply_recommendation()
         for key in ("spec_3", "spec_4"):
             assert key in payload_after_apply["verification"]
+
+
+def test_default_runtime_uses_fixed_staging_capacity() -> None:
+    runtime = DashboardRuntime.create_default()
+    payload = runtime.get_dashboard_payload()
+
+    assert runtime.config.staging_capacity_units == 40.0
+    assert all(dock.staging.capacity_units == 40.0 for dock in runtime.state.docks.values())
+    assert all(row["staging_capacity_units"] == 40.0 for row in payload["dock_status"])
+
+
+def test_supervisor_update_enforces_fixed_staging_capacity_for_existing_and_new_docks() -> None:
+    runtime = DashboardRuntime.create_default()
+    runtime.state.docks[1].staging.capacity_units = 100.0
+
+    payload = runtime.update_supervisor({"active_docks": 5})
+
+    assert runtime.state.docks[1].staging.capacity_units == 40.0
+    assert runtime.state.docks[5].staging.capacity_units == 40.0
+    assert all(row["staging_capacity_units"] == 40.0 for row in payload["dock_status"])
+
+
+def test_palletized_step_conservation_matches_dashboard_row_values() -> None:
+    config = YardConfig(
+        arrival_rate_per_hour=0.0,
+        review_interval_minutes=999,
+        clear_forklift_rate=1.2,
+    )
+    state = initialize_state(
+        available_workers=0,
+        available_forklifts=1,
+        active_docks=1,
+        max_unloaders_per_dock=config.max_unloaders_per_dock,
+        config=config,
+    )
+    dock = state.docks[1]
+    dock.current_truck = Truck(
+        truck_id="UI-PALLET-1",
+        truck_type="medium_palletized",
+        initial_load_units=12.0,
+        remaining_load_units=12.0,
+        gate_arrival_minute=0,
+        assigned_dock_id=1,
+        unload_start_minute=0,
+    )
+    dock.assigned_workers = 0
+    dock.assigned_forklifts = 1
+    dock.staging.occupancy_units = 2.2
+    dock.staging.load_family = "palletized"
+    state.waiting_queue.clear()
+    state.update_resource_assignment_counters()
+
+    runtime = DashboardRuntime(config=config, state=state, rng_seed=17)
+    remaining_before = dock.current_truck.remaining_load_units
+    staging_before = dock.staging.occupancy_units
+
+    payload = runtime.step(minutes=1)
+
+    dock_after = runtime.state.docks[1]
+    assert dock_after.current_truck is not None
+    unloaded_this_step = remaining_before - dock_after.current_truck.remaining_load_units
+    staging_delta = dock_after.staging.occupancy_units - staging_before
+    assert abs(unloaded_this_step - staging_delta) < 1e-6
+
+    row = next(item for item in payload["dock_status"] if item["dock_id"] == 1)
+    assert row["staging_occupancy_units"] == round(dock_after.staging.occupancy_units, 1)
+    assert row["remaining_load_units"] == round(dock_after.current_truck.remaining_load_units, 1)
